@@ -108,12 +108,29 @@ export async function vault(req, store) {
         return json(422, { error: "Часть копии ещё не загружена." });
       head = { ...head, upload: h.upload, parts: h.parts };
     } else return json(400, { error: "Некорректные данные копии." });
-    const changed = await store.setJSON(
-      path,
-      head,
-      data.base === null ? { onlyIfNew: true } : { onlyIfMatch: data.base }
-    );
+    const previous = data.base === null ? null : await store.getMetadata(path);
+    const currentGroup = head.upload ? { upload: head.upload, parts: head.parts } : null;
+    const priorGroup = previous?.metadata?.active || null;
+    const changed = await store.setJSON(path, head, {
+      ...(data.base === null ? { onlyIfNew: true } : { onlyIfMatch: data.base }),
+      metadata: { active: currentGroup, previous: priorGroup }
+    });
     if (!changed.modified) return json(409, { error: "На другом устройстве есть новая редакция." });
+    // Keep the previous complete group available to readers already downloading it.
+    const retired = previous?.metadata?.previous;
+    if (
+      retired &&
+      retired.upload !== currentGroup?.upload &&
+      retired.upload !== priorGroup?.upload
+    ) {
+      const keys = Array.from(
+        { length: retired.parts },
+        (_, i) => root + "chunks/" + id + "/" + retired.upload + "/" + i
+      );
+      for (let i = 0; i < keys.length; i += 16) {
+        await Promise.allSettled(keys.slice(i, i + 16).map((key) => store.delete(key)));
+      }
+    }
     return json(200, { etag: changed.etag });
   } catch (e) {
     if (e instanceof RangeError) return json(413, { error: "Часть копии слишком велика." });

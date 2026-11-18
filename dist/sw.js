@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "karetka-shell-v1.0.1";
+const CACHE = "karetka-shell-v1.0.2";
 const SHELL = [
   "./",
   "./index.html",
@@ -43,7 +43,8 @@ self.addEventListener("fetch", (ev) => {
   if (
     req.method !== "GET" ||
     url.origin !== self.location.origin ||
-    (url.pathname.includes("/.netlify/") || url.pathname.includes("/api/"))
+    url.pathname.includes("/.netlify/") ||
+    url.pathname.includes("/api/")
   )
     return;
   const files = SHELL.map((p) => new URL(p, scope).href);

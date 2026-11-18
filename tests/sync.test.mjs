@@ -13,10 +13,13 @@ class MemoryBlobs {
   }
   async getMetadata(key) {
     const old = this.entries.get(key);
-    return old ? { etag: old.etag } : null;
+    return old ? { etag: old.etag, metadata: old.metadata } : null;
   }
   async getWithMetadata(key) {
     return this.entries.get(key) || null;
+  }
+  async delete(key) {
+    this.entries.delete(key);
   }
   async list({ prefix }) {
     return {
@@ -25,12 +28,12 @@ class MemoryBlobs {
         .map(([key, v]) => ({ key, etag: v.etag }))
     };
   }
-  async setJSON(key, data, { onlyIfNew, onlyIfMatch }) {
+  async setJSON(key, data, { onlyIfNew, onlyIfMatch, metadata }) {
     const old = this.entries.get(key);
     if ((onlyIfNew && old) || (onlyIfMatch && old?.etag !== onlyIfMatch))
       return { modified: false };
     const etag = '"v' + ++this.count + '"';
-    this.entries.set(key, { data: structuredClone(data), etag });
+    this.entries.set(key, { data: structuredClone(data), etag, metadata });
     return { modified: true, etag };
   }
 }
@@ -166,6 +169,21 @@ test("large manuscript round trips across immutable chunks and after an interrup
   const second = device(blobs);
   await second.sync.connect(a.sync.code());
   assert.equal(second.books.get(b.id).sections[0].text, b.sections[0].text);
+});
+test("replaced manuscript chunks are reclaimed after readers have a full revision to finish", async () => {
+  const blobs = new MemoryBlobs(),
+    a = device(blobs),
+    b = book(randomBytes(480000).toString("base64"));
+  a.books.set(b.id, b);
+  await a.sync.connect(null);
+  const first = [...blobs.entries.keys()].filter((k) => k.includes("/chunks/"));
+  assert.ok(first.length >= 2);
+  edit(b, "Короткая редакция.");
+  await a.sync.now();
+  assert.ok(first.every((k) => blobs.entries.has(k)));
+  edit(b, "Следующая редакция.");
+  await a.sync.now();
+  assert.ok(first.every((k) => !blobs.entries.has(k)));
 });
 test("lost HTTP response after a committed write does not duplicate a manuscript", async () => {
   const blobs = new MemoryBlobs(),

@@ -22,18 +22,15 @@
       if (word.length >= 4 && !ignored.has(word)) {
         const prev = last.get(word);
         if (prev && index - prev.index <= 18) {
+          const between = index - prev.index - 1;
+          const distance = between
+            ? between + " " + F.plural(between, "слово", "слова", "слов") + " между повторами"
+            : "два слова подряд";
           found.push({
             at: m.index,
             end: m.index + m[0].length,
             label: "Близкий повтор",
-            excerpt:
-              "«" +
-              m[0] +
-              "» · " +
-              (index - prev.index) +
-              " " +
-              F.plural(index - prev.index, "слово", "слова", "слов") +
-              " между позициями"
+            excerpt: "«" + m[0] + "» · " + distance
           });
         }
         last.set(word, { index });
