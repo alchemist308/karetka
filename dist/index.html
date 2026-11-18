@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f8f7f2" />
+    <meta
+      name="description"
+      content="Печатная машинка для ваших рукописей. Пишите рассказы и книги, собирайте главы и сцены."
+    />
+    <title>Каретка — письменный стол</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="icon" href="mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="formats.js" defer></script>
+    <script src="storage.js" defer></script>
+    <script src="sync.js" defer></script>
+    <script src="app.js" defer></script>
+    <script src="assistants.js" defer></script>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <header class="topbar">
+        <a class="brand" href="./" aria-label="Каретка, письменный стол" id="home"
+          ><span class="brand-mark" aria-hidden="true"><i data-icon="machine"></i></span
+          ><span>Каретка</span></a
+        >
+        <span class="nav-divider"></span>
+        <nav aria-label="Рабочее пространство">
+          <button class="nav-item current" id="deskNav" aria-current="page">
+            <i data-icon="desk"></i><span>Письменный стол</span></button
+          ><button class="nav-item" id="libraryNav" aria-label="Рукописи" title="Рукописи">
+            <i data-icon="library"></i><span>Рукописи</span>
+          </button>
+        </nav>
+        <div class="top-actions">
+          <button class="icon-button" id="settingsButton" title="Настройки" aria-label="Настройки">
+            <i data-icon="settings"></i>
+          </button>
+          <button class="quiet focus-button" id="focusButton" title="Режим фокуса">
+            <i data-icon="focus"></i><span>Фокус</span>
+          </button>
+          <button class="primary export-button" id="exportButton" title="Экспорт рукописи">
+            <i data-icon="download"></i><span>Экспорт</span>
+          </button>
+        </div>
+      </header>
+      <main class="workshop">
+        <div class="bar">
+          <div class="book-tools">
+            <button
+              id="outlineButton"
+              class="outline-button"
+              aria-label="Открыть оглавление"
+              title="Оглавление"
+            >
+              <i data-icon="outline"></i>
+            </button>
+            <span class="little-divider"></span>
+            <button class="book-name" id="bookButton" aria-label="Оглавление рукописи">
+              <span id="currentBook">Рукопись</span><i data-icon="chevron"></i>
+            </button>
+            <span class="sample-tag" id="sampleTag" hidden>Образец</span>
+          </div>
+          <div class="bar-right">
+            <button
+              class="assistant-toggle quiet"
+              id="assistantButton"
+              aria-label="Помощники писателя"
+              title="Помощники писателя"
+              aria-expanded="false"
+              aria-controls="assist"
+            >
+              <i data-icon="notebook"></i><span>Помощники</span>
+            </button>
+            <div class="mode-switch" role="group" aria-label="Режим редактора">
+              <button id="machineMode" aria-pressed="true">
+                <i data-icon="machine"></i><span>Машинка</span>
+              </button>
+              <button id="editMode" aria-pressed="false">
+                <i data-icon="edit"></i><span>Правка</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="desk-layout">
+          <section id="stage" class="stage" aria-label="Письменный стол">
+            <div class="desk-grain" aria-hidden="true"></div>
+            <article class="sheet" id="sheet">
+              <div class="paper-grain" aria-hidden="true"></div>
+              <div class="light-window" aria-hidden="true"><div id="lamp" class="lamp"></div></div>
+              <div class="paper-head">
+                <div class="folio">
+                  <span class="folio-dash" aria-hidden="true"></span
+                  ><span id="sectionKind">Глава 01</span>
+                </div>
+                <h1 id="sectionTitle">Рукопись</h1>
+              </div>
+              <div class="writing-area" id="writingArea">
+                <div id="mirror" class="ink mirror" aria-hidden="true"></div>
+                <textarea
+                  id="writer"
+                  class="ink"
+                  aria-label="Текст рукописи"
+                  placeholder="Начните писать…"
+                  spellcheck="false"
+                  autocapitalize="sentences"
+                  autocomplete="off"
+                  readonly
+                ></textarea>
+              </div>
+            </article>
+            <div class="machine-base" aria-hidden="true"><div class="base-grain"></div></div>
+            <div class="ruler" aria-hidden="true"><div class="scale" id="scale"></div></div>
+            <div class="track" aria-hidden="true"></div>
+            <div class="carriage" id="carriage" aria-hidden="true">
+              <div class="slider">
+                <span class="pin"></span><span class="rivet l"></span><span class="rivet r"></span>
+              </div>
+            </div>
+            <div class="deck-controls">
+              <button
+                class="sound-button"
+                id="soundButton"
+                aria-pressed="false"
+                title="Переключить звук машинки"
+              >
+                <span class="sound-icon"><i data-icon="speakerOff"></i></span
+                ><span class="sound-text">Звук клавиш</span
+                ><span class="lever" aria-hidden="true"></span>
+              </button>
+              <div class="counter-line">
+                <span class="counter-label" id="counterLabel">Слов в главе</span
+                ><span class="counter" id="counter" aria-hidden="true"></span
+                ><span class="visually-hidden" id="countAccessible"></span>
+              </div>
+            </div>
+            <button class="focus-exit quiet" id="exitFocus" hidden>
+              <i data-icon="collapse"></i><span>Выйти из фокуса</span>
+            </button>
+          </section>
+          <aside id="assist" class="assist" hidden aria-label="Помощники писателя">
+            <header class="assist-head">
+              <h2>Помощники</h2>
+              <button id="closeAssist" class="icon-button" aria-label="Закрыть помощников">
+                <i data-icon="close"></i>
+              </button>
+            </header>
+            <div id="assistBody"></div>
+          </aside>
+        </div>
+      </main>
+      <footer class="statusbar">
+        <span class="saved" id="saveBadge"
+          ><i data-icon="checkCircle"></i
+          ><span id="saveText" role="status">Открываем рукопись…</span></span
+        ><span class="status-right"
+          ><span id="outlineStatus"></span><span class="status-dot" aria-hidden="true">·</span
+          ><span id="charStatus">0 знаков</span></span
+        >
+      </footer>
+    </div>
+    <dialog id="panel" aria-labelledby="panelTitle">
+      <div class="dialog-inner">
+        <header class="panel-head">
+          <div>
+            <h2 id="panelTitle"></h2>
+            <p id="panelSub" hidden></p>
+          </div>
+          <button class="icon-button" id="closePanel" title="Закрыть" aria-label="Закрыть">
+            <i data-icon="close"></i>
+          </button>
+        </header>
+        <div id="panelBody"></div>
+      </div>
+    </dialog>
+    <input
+      id="fileInput"
+      class="visually-hidden"
+      type="file"
+      accept=".json,.txt,text/plain,application/json"
+      tabindex="-1"
+      aria-label="Открыть рукопись из файла"
+    />
+    <div id="toast" class="toast" role="status"></div>
+    <noscript>Для работы редактора включите JavaScript в браузере.</noscript>
+  </body>
+</html>
