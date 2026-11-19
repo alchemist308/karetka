@@ -11,7 +11,7 @@ const story = {
       id: "b",
       title: "Глава 1",
       text: "Встреча",
-      plan: { goal: "Найти ключ" },
+      plan: { goal: "Найти ключ", characterGoal: 3500 },
       scenes: [{ id: "c", title: "Причал", text: "— Привет.\n\nВетер стих." }]
     }
   ]
@@ -20,6 +20,7 @@ test("chapters, nested scenes, notes and blank lines survive backup and export",
   const copy = formats.parseBackup(formats.backup(story));
   assert.equal(copy.cards[0].title, "Смотритель");
   assert.equal(copy.sections[0].plan.goal, "Найти ключ");
+  assert.equal(copy.sections[0].plan.characterGoal, 3500);
   assert.equal(copy.sections[0].scenes[0].text, story.sections[0].scenes[0].text);
   assert.equal(
     formats.manuscript(story),

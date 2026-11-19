@@ -1,3 +1,10 @@
+@font-face {
+  font-family: "TT2020 Typewriter";
+  src: url("fonts/tt2020-e.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
 :root {
   color-scheme: light;
   --ink: #292e28;
@@ -8,7 +15,7 @@
   --surface: #f8f7f2;
   --serif: "Cormorant Garamond", Baskerville, "Times New Roman", serif;
   --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  --type: "Courier Prime", "Courier New", "Nimbus Mono PS", Courier, monospace;
+  --type: "TT2020 Typewriter", "Courier New", Courier, monospace;
   --paper: #fbf6e9;
   --paper-bottom: #f1ead9;
   --desk: #d8d9ce;
@@ -19,7 +26,6 @@
   --paper-size: min(78%, 850px);
   --inset: clamp(28px, 5.15vw, 78px);
   --machine-deck: 88px;
-  --rail-bottom: calc(100% - var(--machine-deck));
   --type-gap: 20px;
 }
 *,
@@ -309,6 +315,7 @@ nav {
     inset 0 0 0 1px #dddcd2;
 }
 .stage {
+  --rail-bottom: calc(100% - var(--machine-deck));
   flex: 1;
   min-height: 0;
   isolation: isolate;
@@ -420,11 +427,11 @@ p {
   margin: 0;
 }
 h1 {
-  font-family: var(--serif);
-  font-size: clamp(2.15rem, 3.5vw, 3.55rem);
-  line-height: 1.06;
+  font-family: var(--type);
+  font-size: clamp(1.7rem, 2.8vw, 2.75rem);
+  line-height: 1.18;
   font-weight: 400;
-  letter-spacing: -0.046em;
+  letter-spacing: 0;
   margin-top: 13px;
   color: #302f26;
   overflow-wrap: anywhere;
@@ -448,7 +455,8 @@ h1 {
   line-height: var(--line-ink);
   letter-spacing: 0;
   font-kerning: none;
-  font-variant-ligatures: none;
+  font-variant-ligatures: no-common-ligatures contextual;
+  font-feature-settings: "calt" 1;
   word-spacing: 0;
   tab-size: 4;
   white-space: pre-wrap;
@@ -654,6 +662,36 @@ h1 {
   gap: 10px;
   padding: 0 clamp(18px, 2.8vw, 46px);
 }
+.deck-actions { display: flex; align-items: center; gap: 12px; }
+.deck-key {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 6px;
+  color: #3e4d40;
+}
+.deck-key:hover { background: #f4f2e740; }
+.keyboard-focus { display: none; }
+.app.keyboard .keyboard-focus { display: grid; }
+.goal-readout { padding: 4px 1px; border-radius: 3px; font-variant-numeric: tabular-nums; }
+.goal-readout:hover { text-decoration: underline; }
+.goal-readout.reached { color: var(--green); font-weight: 650; }
+.first-line {
+  position: absolute;
+  left: var(--inset);
+  bottom: calc(12px + var(--type-gap) + 3em);
+  padding: 5px 0;
+  color: #67604e;
+  font: 0.88rem/1.4 var(--type);
+  text-decoration: underline dotted;
+  text-underline-offset: 0.25em;
+}
+.suggested-line { font: 1.15rem/1.65 var(--type); margin-bottom: 22px; }
+.text-link { text-decoration: underline; text-underline-offset: .15em; }
+.share-text { margin-top: 8px; }
+.stage.editing .first-line,
+.app.focus .first-line { display: none; }
 .sound-button {
   color: #3e4d40;
   font-size: 0.87rem;
@@ -763,16 +801,15 @@ h1 {
 .status-dot {
   color: #939586;
 }
-.focus-exit {
+.carriage-exit {
   position: absolute;
-  right: 16px;
-  top: 14px;
-  z-index: 4;
-  opacity: 0.75;
-}
-.focus-exit:hover,
-.focus-exit:focus-visible {
-  opacity: 1;
+  width: 78px;
+  height: 48px;
+  left: -39px;
+  top: -26px;
+  pointer-events: auto;
+  touch-action: manipulation;
+  border-radius: 10px;
 }
 .app.focus .topbar,
 .app.focus .bar,
@@ -786,7 +823,6 @@ h1 {
 .app.focus .stage {
   border: 0;
   border-radius: 0;
-  --machine-deck: 34px;
 }
 .stage.editing .track,
 .stage.editing .ruler,
@@ -1096,6 +1132,21 @@ input[type="text"] {
   accent-color: #44654c;
   width: 20px;
   height: 20px;
+}
+.sound-level {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 5px 14px;
+  padding: 7px 0;
+  font-size: 0.9rem;
+}
+.sound-level output { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sound-level input {
+  width: 100%;
+  grid-column: 1 / -1;
+  margin: 0;
+  accent-color: var(--green);
 }
 hr {
   height: 1px;
@@ -1599,23 +1650,32 @@ body.no-lamp {
     max-width: min(94vw, 335px);
   }
 }
+.app.focus { min-height: 0; }
 .app.focus .stage {
-  --machine-deck: clamp(36px, 11vh, 108px);
+  --machine-deck: max(env(safe-area-inset-bottom, 0px), clamp(38px, 10dvh, 100px));
+  background: var(--paper);
+  box-shadow: none;
 }
 .app.focus .sheet {
+  inset: 0;
+  transform: none;
   width: 100%;
   max-width: none;
-  top: 0;
   border: 0;
   box-shadow: none;
-  --inset: max(7%, calc((100% - 720px) / 2));
+  --inset: max(7%, calc((100% - 720px) / 2), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
 }
+.app.focus .writing-area { bottom: calc(var(--machine-deck) + var(--type-gap)); }
+.app.focus .desk-grain,
+.app.focus .machine-base,
 .app.focus .paper-head,
 .app.focus .sheet::before,
-.app.focus .ruler {
+.app.focus .ruler,
+.app.focus ~ .toast {
   display: none;
 }
 .app.focus .lamp {
+  bottom: var(--machine-deck);
   width: min(920px, 120vw);
   height: min(560px, 75vh);
   background: radial-gradient(
@@ -1626,7 +1686,58 @@ body.no-lamp {
     transparent 75%
   );
 }
-.app.focus .focus-exit {
-  background: #fbfaefba;
-  border-color: #d6d2c2;
+body[data-lighting="night"] {
+  color-scheme: dark;
+  --ink: #e8e1d4;
+  --muted: #bcb6aa;
+  --line: #514c43;
+  --green: #b7c6ae;
+  --surface: #242322;
+  --desk: #161719;
+  --paper: #403b37;
+  --paper-bottom: #352f2e;
+  --lamp-strength: 1;
+}
+body[data-lighting="night"][data-paper="white"] { --paper: #444142; --paper-bottom: #363436; }
+body[data-lighting="night"][data-paper="gray"] { --paper: #3b4039; --paper-bottom: #2c322f; }
+body[data-lighting="night"].no-lamp { --lamp-strength: 0; }
+body[data-lighting="night"] .stage { background: radial-gradient(ellipse at 50% 0%, #373430, #181719 80%); border-color: #4b4740; }
+body[data-lighting="night"] .sheet { border-color: #6a5f52; }
+body[data-lighting="night"] .app .lamp {
+  width: min(870px, 150vw);
+  height: min(460px, 95%);
+  opacity: var(--lamp-strength);
+  background: radial-gradient(ellipse 55% 100% at 50% 100%, #f0c193 0%, #e9ba95 21%, #c89279aa 49%, #98736436 72%, transparent 98%);
+  -webkit-mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
+  mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
+}
+body[data-lighting="night"] .writing-area { mix-blend-mode: difference; }
+body[data-lighting="night"] #writer { color: #fff8ed; caret-color: #fff5db; }
+body[data-lighting="night"] #writer::placeholder { color: #e4dfd6; }
+body[data-lighting="night"] #writer::selection { color: #fff; background: #685277; }
+body[data-lighting="night"] :is(.paper-head h1,.folio,.first-line) { color: #e7dcc7; }
+body[data-lighting="night"] .machine-base { background: linear-gradient(110deg, #302d2d, #47403d 50%, #302b2b); }
+body[data-lighting="night"] .ruler { filter: brightness(0.64); }
+body[data-lighting="night"] .track { filter: brightness(0.59); }
+body[data-lighting="night"] .slider { background: linear-gradient(174deg, #8d8072, #69615b 48%, #554e49 74%, #706860); border-color: #5c524a; box-shadow: inset 0 1px 1px #aa9881, 0 3px 6px #151415a8; }
+body[data-lighting="night"] :is(.sound-button,.deck-key,.counter-line,.statusbar,.icon-button,.outline-button,.nav-item,.brand,.book-name,.panel-head h2,.assist-head h2,.label,.row-text strong,.sound-level output) { color: var(--ink); }
+body[data-lighting="night"] :is(.topbar,.bar,.statusbar,dialog,.assist,.assist-head) { background: var(--surface); border-color: var(--line); }
+body[data-lighting="night"] :is(.quiet,.btn,.option,.library-row,.export-row,.outline-row,.outline-button,.pill,.opt-grid button,.panel-head .icon-button,.mode-switch,.assist input,.assist textarea,.assist select,.form-field input,.form-field select,.form-field textarea,.pair-key,.notice) {
+  background: #302e2b; color: var(--ink); border-color: #585247;
+}
+body[data-lighting="night"] :is(.nav-item.current,.option.selected,.library-row.selected,.outline-row.selected,.export-row.selected,.pill.selected,.mode-switch button[aria-pressed="true"]) {
+  background: #414b40; color: #f5f1e3; border-color: #85917d;
+}
+body[data-lighting="night"] :is(.primary,.btn.main) { background: #425a4a; color: #f5f4e9; border-color: #788674; }
+body[data-lighting="night"] :is(.icon-button,.book-name,.outline-button,.pill,.option,.btn,.deck-key):hover { background: #44423a; }
+body[data-lighting="night"] :is(.saved .icon,.sample-tag,.mode-switch button,.goal-readout.reached) { color: #c1ccb4; }
+body[data-lighting="night"] :is(hr,.nav-divider,.little-divider) { background: var(--line); }
+body[data-lighting="night"] .deck-key[aria-pressed="true"] { color: #f6ca92; background: #514238; }
+@media (max-width: 675px) {
+  .deck-actions { gap: 3px; }
+  .deck-key { min-width: 32px; }
+  .app.keyboard:not(.focus) .stage:not(.editing) .sheet {
+    top: clamp(8px, calc(100% - var(--machine-deck) - var(--typed-height, 8rem) - 1.3rem), 40%);
+    border-radius: 16px 16px 0 0 / 38px 38px 0 0;
+  }
 }

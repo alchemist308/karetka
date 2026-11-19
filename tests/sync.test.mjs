@@ -211,6 +211,12 @@ test("unauthorized and cross-origin requests rejected; unpublished chunks stay i
     endpoint = origin + "/.netlify/functions/vault",
     auth = { Authorization: "Bearer " + "x".repeat(43) };
   assert.equal((await vault(new Request(endpoint), store)).status, 401);
+  const production = "https://karetka.netlify.app/api/vault";
+  const former = "https://karetka-alchemist308.netlify.app";
+  const read = (url, origin) => vault(new Request(url, { headers: { ...auth, Origin: origin } }), store);
+  assert.equal((await read(production, former)).status, 404);
+  assert.equal((await read(production, former + ".example.org")).status, 403);
+  assert.equal((await read(endpoint, former)).status, 403);
   assert.equal(
     (
       await vault(

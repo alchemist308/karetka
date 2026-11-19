@@ -10,7 +10,7 @@ const iconPaths = {
   settings:
     '<path d="m10 3-.55 2.3-2 .9-2.1-.9-1.8 3.2 1.7 1.6-.2 2.2-1.6 1.7 1.8 3.2 2.3-.6 1.8 1.2.6 2.2h3.9l.6-2.2 1.8-1.2 2.3.6 1.8-3.2-1.6-1.7-.2-2.2 1.7-1.6-1.8-3.2-2.1.9-2-.9L14 3z"/><circle cx="12" cy="11.8" r="3"/>',
   focus: '<path d="M8.5 4H4v4.5M15.5 4H20v4.5M20 15.5V20h-4.5M8.5 20H4v-4.5"/>',
-  collapse: '<path d="M4 9h5V4m11 5h-5V4m5 11h-5v5M4 15h5v5"/>',
+  moon: '<path d="M20 14.8A8.5 8.5 0 0 1 9.2 4a8.5 8.5 0 1 0 10.8 10.8Z"/>',
   download: '<path d="M12 3v12m-4.5-4.5L12 15l4.5-4.5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
   outline: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9 5v14m3-10h5m-5 4h4"/>',
   chevron: '<path d="m7.5 10 4.5 4.5 4.5-4.5"/>',
@@ -68,6 +68,14 @@ function newBook(title, kind) {
     rev: 0
   };
 }
+function startBook(title, kind) {
+  const b = newBook(title, kind);
+  books.set(b.id, b);
+  selectBook(b);
+  touch(b);
+  closePanel();
+  writer.focus({ preventScroll: true });
+}
 function sampleBook() {
   const b = newBook("Письма с маяка", "chapters");
   b.id = idDemo;
@@ -103,9 +111,10 @@ const writer = $("writer"),
   mirror = $("mirror"),
   dialog = $("panel");
 const prefs = Object.assign(
-  { correction: "free", size: 18, paper: "cream", sound: false, lamp: true },
+  { correction: "free", size: 18, paper: "cream", lighting: "day", sound: false, volume: 35, lamp: true },
   S.readPref("settings", {})
 );
+prefs.volume = Number.isFinite(prefs.volume) ? Math.min(100, Math.max(0, prefs.volume)) : 35;
 let cloud,
   offlineReady = false;
 function toast(message) {
@@ -254,42 +263,38 @@ function repairJournal() {
     } catch {}
   }
 }
-let audioCtx, noiseBuffer;
+let audioCtx, volumeNode;
+const voices = new Map();
 function audioReady() {
   if (!prefs.sound) return;
   try {
-    audioCtx ??= new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === "suspended") void audioCtx.resume().catch(() => {});
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      volumeNode = audioCtx.createGain();
+      volumeNode.gain.value = prefs.volume / 100;
+      volumeNode.connect(audioCtx.destination);
+    }
+    if (audioCtx.state !== "running") return audioCtx.resume().catch(() => {});
   } catch {}
 }
 function clickSound(kind) {
-  if (!prefs.sound || !audioCtx || audioCtx.state !== "running") return;
-  const ctx = audioCtx,
-    t = ctx.currentTime;
-  if (!noiseBuffer) {
-    noiseBuffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.095), ctx.sampleRate);
-    const v = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < v.length; i++)
-      v[i] = (Math.random() * 2 - 1) * Math.exp(-i / (v.length * 0.18));
+  if (!prefs.sound || !prefs.volume || audioCtx?.state !== "running") return;
+  const variant = kind === "key" ? Math.floor(Math.random() * 3) : 0;
+  const id = kind + variant;
+  if (!voices.has(id)) {
+    const samples = mechanicalKey(audioCtx.sampleRate, kind, variant);
+    const buffer = audioCtx.createBuffer(1, samples.length, audioCtx.sampleRate);
+    buffer.copyToChannel(samples, 0);
+    voices.set(id, buffer);
   }
-  const noise = ctx.createBufferSource(),
-    filter = ctx.createBiquadFilter(),
-    gain = ctx.createGain();
-  noise.buffer = noiseBuffer;
-  filter.type = "bandpass";
-  filter.frequency.value = kind === "return" ? 850 : 1650 + Math.random() * 600;
-  filter.Q.value = 0.8;
-  gain.gain.value = kind === "return" ? 0.12 : 0.13;
-  noise.connect(filter).connect(gain).connect(ctx.destination);
-  noise.start(t);
-  const tone = ctx.createOscillator(),
-    g = ctx.createGain();
-  tone.frequency.value = kind === "return" ? 1396 : kind === "space" ? 110 : 175;
-  g.gain.setValueAtTime(kind === "return" ? 0.042 : 0.045, t);
-  g.gain.exponentialRampToValueAtTime(0.0002, t + (kind === "return" ? 0.26 : 0.032));
-  tone.connect(g).connect(ctx.destination);
-  tone.start(t);
-  tone.stop(t + (kind === "return" ? 0.28 : 0.04));
+  const key = audioCtx.createBufferSource();
+  key.buffer = voices.get(id);
+  key.connect(volumeNode);
+  key.start();
+}
+async function previewKey() {
+  await audioReady();
+  clickSound("key");
 }
 function wordLabel(n) {
   return n.toLocaleString("ru-RU") + " " + F.plural(n, "слово", "слова", "слов");
@@ -305,6 +310,10 @@ function partType(sec = part) {
 function allParts(b) {
   return b.sections.flatMap((s) => [s, ...s.scenes]);
 }
+function sectionTarget() {
+  const target = part?.plan?.characterGoal;
+  return Number.isSafeInteger(target) && target >= 0 && target <= 10000000 ? target : 3000;
+}
 function updateCounts() {
   if (!part) return;
   const count = F.words(part.text),
@@ -315,8 +324,12 @@ function updateCounts() {
     $("counter").dataset.n = digits;
   }
   $("countAccessible").textContent = wordLabel(count);
-  $("charStatus").textContent =
-    chars.toLocaleString("ru-RU") + " " + F.plural(chars, "знак", "знака", "знаков");
+  const target = sectionTarget(), readout = $("charStatus");
+  const total = chars.toLocaleString("ru-RU"), goal = target.toLocaleString("ru-RU");
+  readout.textContent = target ? total + " / " + goal : total + " " + F.plural(chars, "знак", "знака", "знаков");
+  readout.classList.toggle("reached", target > 0 && chars >= target);
+  readout.setAttribute("aria-label", target ? "Цель раздела, " + total + " из " + goal + " знаков" : "Задать цель раздела");
+  $("firstLineButton").hidden = part.text.length !== 0;
 }
 function renderHeader() {
   const type = partType(),
@@ -351,9 +364,21 @@ function selectBook(b, id, place) {
   scheduleLayout();
   window.dispatchEvent(new Event("karetka-part"));
 }
+const systemNight = matchMedia("(prefers-color-scheme: dark)");
+function applyLighting() {
+  const night = prefs.lighting === "night" || (prefs.lighting === "system" && systemNight.matches);
+  document.body.dataset.lighting = night ? "night" : "day";
+  $("nightButton").setAttribute("aria-pressed", String(night));
+  document.querySelector('meta[name="theme-color"]').content = night ? "#242322" : "#f8f7f2";
+}
+if (systemNight.addEventListener) systemNight.addEventListener("change", applyLighting);
+else systemNight.addListener(applyLighting);
 function updateSettings() {
   S.writePref("settings", prefs);
+  if (volumeNode)
+    volumeNode.gain.setTargetAtTime(prefs.sound ? prefs.volume / 100 : 0, audioCtx.currentTime, 0.012);
   document.body.dataset.paper = prefs.paper;
+  applyLighting();
   document.body.classList.toggle("no-lamp", !prefs.lamp);
   document.documentElement.style.setProperty("--font-ink", prefs.size + "px");
   $("soundButton").setAttribute("aria-pressed", String(prefs.sound));
@@ -389,6 +414,11 @@ function scheduleLayout() {
     });
 }
 let strikeSound = "";
+document.fonts?.load('18px "TT2020 Typewriter"', "Съешь ещё Ёж ABC").then(() => {
+  layout.prefix = undefined;
+  firstGeometry = true;
+  scheduleLayout();
+}).catch(() => {});
 function layout() {
   if (!part || !sheet.clientWidth) return;
   const head = sheet.querySelector(".paper-head"),
@@ -446,6 +476,7 @@ function layout() {
     beforeRows = layout.rows;
   }
   const row = beforeRows + currentParagraphRows;
+  stage.style.setProperty("--typed-height", (Math.min(row, 100) + 4) * lh + "px");
   const padding = Math.max(0, area.clientHeight - lh);
   writer.style.paddingTop = padding + "px";
   writer.style.paddingBottom = padding + "px";
@@ -464,12 +495,48 @@ function layout() {
   lastLine = row;
   lastColumn = x;
 }
-function focusMode(on) {
-  $("app").classList.toggle("focus", on);
-  $("exitFocus").hidden = !on;
-  writer.focus({ preventScroll: true });
-  scheduleLayout();
+let previousMode, ownedFullscreen = false;
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement;
 }
+function focusMode(on) {
+  const app = $("app");
+  if (app.classList.contains("focus") === on) return;
+  app.classList.toggle("focus", on);
+  $("exitFocus").hidden = !on;
+  if (on) {
+    previousMode = mode;
+    if (mode !== "machine") setMode("machine", false);
+    const enter = stage.requestFullscreen || stage.webkitRequestFullscreen;
+    if (enter && !fullscreenElement()) {
+      try {
+        Promise.resolve(enter.call(stage, { navigationUI: "hide" })).catch(() => {});
+      } catch {}
+    }
+  } else {
+    if (fullscreenElement() === stage) {
+      const leave = document.exitFullscreen || document.webkitExitFullscreen;
+      try { Promise.resolve(leave.call(document)).catch(() => {}); } catch {}
+    }
+    if (mode !== previousMode) setMode(previousMode, false);
+  }
+  lastLine = undefined;
+  firstGeometry = true;
+  writer.focus({ preventScroll: true });
+  viewport();
+}
+function fullscreenChanged() {
+  const wasOurs = ownedFullscreen;
+  ownedFullscreen = fullscreenElement() === stage;
+  if (wasOurs && !ownedFullscreen) focusMode(false);
+  if (ownedFullscreen && !$("app").classList.contains("focus")) {
+    const leave = document.exitFullscreen || document.webkitExitFullscreen;
+    Promise.resolve(leave.call(document)).catch(() => {});
+  }
+  viewport();
+}
+document.addEventListener("fullscreenchange", fullscreenChanged);
+document.addEventListener("webkitfullscreenchange", fullscreenChanged);
 function blockEdit() {
   if (!blockEdit.last || Date.now() - blockEdit.last > 1800) {
     toast("Для исправлений откройте «Правка».");
@@ -564,6 +631,7 @@ document.addEventListener("selectionchange", () => {
   if (document.activeElement === writer) scheduleLayout();
 });
 sheet.addEventListener("click", (e) => {
+  if (e.target.closest("button")) return;
   if (e.target !== writer) writer.focus({ preventScroll: true });
   audioReady();
   scheduleLayout();
@@ -659,7 +727,9 @@ function viewLibrary() {
     '</div><hr><div class="group">' +
     btn(icon("upload") + "Открыть из файла", "import", "btn") +
     btn(icon("cloud") + "Синхронизация устройств", "sync", "btn") +
-    "</div>";
+    "</div>" + (location.origin === "https://karetka-alchemist308.netlify.app"
+      ? '<p class="hint">Черновики с этого адреса доступны здесь. Для переноса включите синхронизацию и введите тот же код <a class="text-link" href="https://karetka.netlify.app/" target="_blank" rel="noopener">на новом адресе</a>.</p>'
+      : "");
   action("new", () => bookForm());
   action("import", () => $("fileInput").click());
   action("sync", viewCloud);
@@ -737,12 +807,7 @@ function bookForm(existing) {
       if (existing.id === book.id) renderHeader();
       viewLibrary();
     } else {
-      const b = newBook(t, kind);
-      books.set(b.id, b);
-      selectBook(b);
-      touch(b);
-      closePanel();
-      writer.focus({ preventScroll: true });
+      startBook(t, kind);
     }
   };
   $("bookTitle").focus();
@@ -965,6 +1030,8 @@ function settings() {
       [21, "21 px"],
       [24, "24 px"]
     ]) +
+    '</div></div><div class="group"><h3>Освещение</h3><div class="opt-grid">' +
+    pills("lighting", [["day", "Дневное"], ["night", "Ночная лампа"], ["system", "Как на устройстве"]]) +
     '</div></div><div class="group"><h3>Бумага</h3><div class="opt-grid">' +
     pills("paper", [
       ["cream", "Кремовая", "#f7efd9"],
@@ -975,7 +1042,8 @@ function settings() {
     (prefs.lamp ? "checked" : "") +
     '></label><label class="checkline">Звук клавиш и звонок<input type="checkbox" id="soundCheck" ' +
     (prefs.sound ? "checked" : "") +
-    '></label></div><hr><div class="group">' +
+    '></label><label class="sound-level" for="volume">Громкость<output id="volumeValue" for="volume"></output><input id="volume" type="range" min="0" max="100" step="1"></label></div><hr><div class="group">' +
+    btn("Цель по числу знаков", "target") +
     btn(icon("cloud") + "Синхронизация устройств", "cloud", "btn") +
     '<p class="file-hint" id="offlineInfo"></p></div>';
   $("offlineInfo").textContent = offlineReady
@@ -1007,13 +1075,74 @@ function settings() {
     prefs.lamp = e.target.checked;
     updateSettings();
   };
+  const volume = $("volume"), volumeValue = $("volumeValue");
+  volume.value = prefs.volume;
+  volume.disabled = !prefs.sound;
+  volumeValue.value = prefs.volume + " %";
+  volume.oninput = () => {
+    prefs.volume = volume.valueAsNumber;
+    volumeValue.value = prefs.volume + " %";
+    updateSettings();
+  };
+  volume.onchange = previewKey;
   $("soundCheck").onchange = (e) => {
     prefs.sound = e.target.checked;
-    audioReady();
+    volume.disabled = !prefs.sound;
     updateSettings();
-    if (prefs.sound) clickSound("key");
+    if (prefs.sound) void previewKey();
   };
   action("cloud", viewCloud);
+  action("target", viewTarget);
+}
+function viewTarget() {
+  const section = part;
+  panel("target", "Цель раздела", section.title);
+  $("panelBody").innerHTML =
+    '<form id="targetForm" class="group"><div class="form-field"><label for="targetNumber">Сколько знаков хотите написать?</label>' +
+    '<input id="targetNumber" type="number" inputmode="numeric" min="1" max="10000000" step="1" required></div>' +
+    '<div class="button-row"><button class="btn main" type="submit">Сохранить</button>' +
+    btn("Без цели", "clear") + '</div></form>';
+  $("targetNumber").value = sectionTarget() || "";
+  function save(n) {
+    if (section === part) {
+      part.plan ??= {};
+      part.plan.characterGoal = n;
+      touch();
+      updateCounts();
+    }
+    closePanel();
+    writer.focus({ preventScroll: true });
+  }
+  $("targetForm").onsubmit = (e) => { e.preventDefault(); save($("targetNumber").valueAsNumber); };
+  action("clear", () => save(0));
+}
+const firstLines = [
+  "В посылке лежал ключ от квартиры, в которой я ещё не жил.",
+  "Через двадцать лет мать впервые попросила меня опоздать на поезд.",
+  "На старой карте наша улица обрывалась у самого порога.",
+  "Письмо было адресовано дому, и почтальон просунул его под дверь.",
+  "Гость узнал собаку, хотя в этом городе никогда не бывал.",
+  "В шесть утра соседка вернула мне книгу с другой последней главой.",
+  "До отправления оставалось восемь минут, когда из пустого вагона позвали меня по имени.",
+  "В тот вечер бабушка накрыла стол на одного человека больше."
+];
+let lineIndex = Math.floor(Math.random() * firstLines.length);
+function viewFirstLine() {
+  const section = part;
+  if (!section || section.text) return;
+  panel("firstLine", "Первая строка");
+  $("panelBody").innerHTML = '<p id="suggestedLine" class="suggested-line"></p><div class="button-row">' +
+    btn("Начать с этой строки", "use", "btn main") + btn("Другой вариант", "another") + '</div>';
+  const show = () => { $("suggestedLine").textContent = firstLines[lineIndex]; };
+  action("another", () => { lineIndex = (lineIndex + 1) % firstLines.length; show(); });
+  action("use", () => {
+    closePanel();
+    if (part !== section || writer.value) return;
+    writer.focus({ preventScroll: true });
+    writer.setRangeText(firstLines[lineIndex] + " ", 0, 0, "end");
+    writer.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  show();
 }
 function viewExport() {
   panel("export", "Экспорт рукописи", book.title);
@@ -1042,7 +1171,8 @@ function viewExport() {
       )
       .join("") +
     "</div>" +
-    btn(icon("download") + "Скачать", "download", "btn main wide");
+    btn(icon("download") + "Скачать", "download", "btn main wide") +
+    (navigator.share ? btn("Поделиться текстом", "share", "btn wide share-text") : "");
   $("panelBody")
     .querySelectorAll("[data-format]")
     .forEach(
@@ -1064,6 +1194,14 @@ function viewExport() {
           });
     F.download(blob, book.title, format === "json" ? "karetka.json" : format);
     closePanel();
+  });
+  action("share", async () => {
+    try {
+      await navigator.share({ title: book.title, text: F.manuscript(book) });
+      closePanel();
+    } catch (err) {
+      if (err.name !== "AbortError") toast("Для этой рукописи воспользуйтесь скачиванием файла.");
+    }
   });
 }
 $("fileInput").onchange = async (e) => {
@@ -1169,7 +1307,22 @@ function showCode() {
     out
   );
 }
-$("focusButton").onclick = () => focusMode(true);
+$("focusButton").onclick = $("keyboardFocus").onclick = () => focusMode(true);
+$("firstLineButton").onclick = viewFirstLine;
+$("charStatus").onclick = viewTarget;
+$("blankPage").onclick = () => {
+  if (!ready) return;
+  const names = new Set([...books.values()].map((b) => b.title));
+  let number = 1;
+  while (names.has("Черновик " + number)) number++;
+  startBook("Черновик " + number, "single");
+};
+$("nightButton").onpointerdown = (e) => e.preventDefault();
+$("nightButton").onclick = () => {
+  prefs.lighting = document.body.dataset.lighting === "night" ? "day" : "night";
+  updateSettings();
+  writer.focus({ preventScroll: true });
+};
 $("exitFocus").onclick = () => focusMode(false);
 $("closePanel").onclick = closePanel;
 $("libraryNav").onclick = viewLibrary;
@@ -1189,12 +1342,15 @@ $("machineMode").onclick = () => setMode("machine");
 $("editMode").onclick = () => setMode("edit");
 $("soundButton").onclick = () => {
   prefs.sound = !prefs.sound;
-  audioReady();
   updateSettings();
-  if (prefs.sound) clickSound("key");
+  if (prefs.sound) void previewKey();
   writer.focus({ preventScroll: true });
 };
 document.addEventListener("keydown", (e) => {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyL" && !e.isComposing && !dialog.open) {
+    e.preventDefault();
+    if (!e.repeat) $("nightButton").click();
+  }
   if (e.key === "Escape" && !dialog.open && $("app").classList.contains("focus")) {
     e.preventDefault();
     focusMode(false);

@@ -12,11 +12,13 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="icon" href="mark.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="preload" href="fonts/tt2020-e.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="style.css?v=1.2" />
     <script src="formats.js" defer></script>
     <script src="storage.js" defer></script>
     <script src="sync.js" defer></script>
-    <script src="app.js" defer></script>
+    <script src="sound.js?v=1.2" defer></script>
+    <script src="app.js?v=1.2" defer></script>
     <script src="assistants.js" defer></script>
   </head>
   <body>
@@ -38,9 +40,10 @@
           <button class="icon-button" id="settingsButton" title="Настройки" aria-label="Настройки">
             <i data-icon="settings"></i>
           </button>
-          <button class="quiet focus-button" id="focusButton" title="Режим фокуса">
+          <button class="quiet focus-button" id="focusButton" aria-label="Фокус" aria-describedby="focusHelp" title="Фокус. Выход по Esc или нажатию на каретку">
             <i data-icon="focus"></i><span>Фокус</span>
           </button>
+          <span class="visually-hidden" id="focusHelp">Для выхода нажмите Esc или саму каретку.</span>
           <button class="primary export-button" id="exportButton" title="Экспорт рукописи">
             <i data-icon="download"></i><span>Экспорт</span>
           </button>
@@ -62,6 +65,7 @@
               <span id="currentBook">Рукопись</span><i data-icon="chevron"></i>
             </button>
             <span class="sample-tag" id="sampleTag" hidden>Образец</span>
+            <button class="outline-button" id="blankPage" aria-label="Чистый лист" title="Чистый лист"><i data-icon="plus"></i></button>
           </div>
           <div class="bar-right">
             <button
@@ -110,16 +114,19 @@
                   readonly
                 ></textarea>
               </div>
+              <button class="first-line" id="firstLineButton" hidden>Нужна первая строка?</button>
             </article>
             <div class="machine-base" aria-hidden="true"><div class="base-grain"></div></div>
             <div class="ruler" aria-hidden="true"><div class="scale" id="scale"></div></div>
             <div class="track" aria-hidden="true"></div>
-            <div class="carriage" id="carriage" aria-hidden="true">
-              <div class="slider">
+            <div class="carriage" id="carriage">
+              <div class="slider" aria-hidden="true">
                 <span class="pin"></span><span class="rivet l"></span><span class="rivet r"></span>
               </div>
+              <button type="button" class="carriage-exit" id="exitFocus" aria-label="Выйти из фокуса" hidden></button>
             </div>
             <div class="deck-controls">
+              <div class="deck-actions">
               <button
                 class="sound-button"
                 id="soundButton"
@@ -130,15 +137,15 @@
                 ><span class="sound-text">Звук клавиш</span
                 ><span class="lever" aria-hidden="true"></span>
               </button>
+              <button class="deck-key" type="button" id="nightButton" aria-pressed="false" aria-label="Ночной свет" aria-keyshortcuts="Alt+L" title="Ночной свет (Alt+L)"><i data-icon="moon"></i></button>
+              <button class="deck-key keyboard-focus" type="button" id="keyboardFocus" aria-label="Фокус" title="Фокус"><i data-icon="focus"></i></button>
+              </div>
               <div class="counter-line">
                 <span class="counter-label" id="counterLabel">Слов в главе</span
                 ><span class="counter" id="counter" aria-hidden="true"></span
                 ><span class="visually-hidden" id="countAccessible"></span>
               </div>
             </div>
-            <button class="focus-exit quiet" id="exitFocus" hidden>
-              <i data-icon="collapse"></i><span>Выйти из фокуса</span>
-            </button>
           </section>
           <aside id="assist" class="assist" hidden aria-label="Помощники писателя">
             <header class="assist-head">
@@ -157,7 +164,7 @@
           ><span id="saveText" role="status">Открываем рукопись…</span></span
         ><span class="status-right"
           ><span id="outlineStatus"></span><span class="status-dot" aria-hidden="true">·</span
-          ><span id="charStatus">0 знаков</span></span
+          ><button id="charStatus" class="goal-readout" title="Цель по числу знаков">0 знаков</button></span
         >
       </footer>
     </div>

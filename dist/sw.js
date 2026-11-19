@@ -1,9 +1,10 @@
 "use strict";
-const CACHE = "karetka-shell-v1.0.2";
+const CACHE = "karetka-shell-v1.2.0";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css",
+  "./style.css?v=1.2",
+  "./fonts/tt2020-e.woff2",
   "./grain.png",
   "./mark.svg",
   "./icon-192.png",
@@ -12,7 +13,8 @@ const SHELL = [
   "./formats.js",
   "./storage.js",
   "./sync.js",
-  "./app.js",
+  "./sound.js?v=1.2",
+  "./app.js?v=1.2",
   "./assistants.js"
 ];
 self.addEventListener("install", (ev) => {
@@ -24,6 +26,7 @@ self.addEventListener("install", (ev) => {
         if (!res.ok) throw new Error("Shell unavailable");
         await cache.put(req, res);
       }
+      await self.skipWaiting();
     })
   );
 });

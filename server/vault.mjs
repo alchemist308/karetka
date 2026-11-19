@@ -37,7 +37,10 @@ export async function vault(req, store) {
   if (!token) return json(401, { error: "Требуется код подключения устройства." });
   const origin = req.headers.get("origin"),
     url = new URL(req.url);
-  if (origin && origin !== url.origin)
+  // The former address is a same-team reverse proxy to this exact production site.
+  const previousAddress = origin === "https://karetka-alchemist308.netlify.app" &&
+    url.origin === "https://karetka.netlify.app";
+  if (origin && origin !== url.origin && !previousAddress)
     return json(403, { error: "Недопустимый источник запроса." });
   const ns = createHash("sha256").update(token).digest("hex"),
     root = "v1/" + ns + "/";
