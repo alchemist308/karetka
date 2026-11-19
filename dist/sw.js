@@ -1,11 +1,12 @@
 "use strict";
-const CACHE = "karetka-shell-v1.2.1";
+const CACHE = "karetka-shell-v1.3.1";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.2.1",
+  "./style.css?v=1.3.1",
   "./fonts/tt2020-e.woff2",
   "./grain.png",
+  "./paper-fibers.webp",
   "./mark.svg",
   "./icon-192.png",
   "./icon-512.png",
@@ -14,7 +15,7 @@ const SHELL = [
   "./storage.js",
   "./sync.js",
   "./sound.js?v=1.2",
-  "./app.js?v=1.2",
+  "./app.js?v=1.3.1",
   "./assistants.js"
 ];
 self.addEventListener("install", (ev) => {

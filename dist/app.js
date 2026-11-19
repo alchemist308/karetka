@@ -108,10 +108,12 @@ const writer = $("writer"),
   stage = $("stage"),
   area = $("writingArea"),
   sheet = $("sheet"),
+  surface = $("paperSurface"),
+  lightWindow = $("lightWindow"),
   mirror = $("mirror"),
   dialog = $("panel");
 const prefs = Object.assign(
-  { correction: "free", size: 18, paper: "cream", lighting: "day", sound: false, volume: 35, lamp: true },
+  { correction: "free", size: 18, paper: "cream", texture: true, lighting: "day", sound: false, volume: 35, lamp: true },
   S.readPref("settings", {})
 );
 prefs.volume = Number.isFinite(prefs.volume) ? Math.min(100, Math.max(0, prefs.volume)) : 35;
@@ -350,6 +352,7 @@ function renderHeader() {
   badge();
 }
 function selectBook(b, id, place) {
+  const oldPart = part?.id;
   book = b;
   part = allParts(b).find((s) => s.id === id) || b.sections[0];
   if (!part) return;
@@ -358,9 +361,11 @@ function selectBook(b, id, place) {
   writer.setSelectionRange(end, end);
   writer.readOnly = false;
   lastLine = undefined;
+  feedPending = false;
   firstGeometry = true;
   S.writePref("selected", { book: b.id, part: part.id });
   renderHeader();
+  if (oldPart !== part.id) rollPaper("load");
   scheduleLayout();
   window.dispatchEvent(new Event("karetka-part"));
 }
@@ -378,6 +383,7 @@ function updateSettings() {
   if (volumeNode)
     volumeNode.gain.setTargetAtTime(prefs.sound ? prefs.volume / 100 : 0, audioCtx.currentTime, 0.012);
   document.body.dataset.paper = prefs.paper;
+  document.body.classList.toggle("smooth-paper", !prefs.texture);
   applyLighting();
   document.body.classList.toggle("no-lamp", !prefs.lamp);
   document.documentElement.style.setProperty("--font-ink", prefs.size + "px");
@@ -393,8 +399,11 @@ function locked() {
   return mode === "machine" && prefs.correction === "draft";
 }
 function setMode(next, focus = true) {
+  const changed = mode !== next;
   mode = next;
   stage.classList.toggle("editing", mode === "edit");
+  if (changed && mode === "machine") rollPaper("load");
+  if (mode === "edit") delete surface.dataset.motion;
   $("machineMode").setAttribute("aria-pressed", String(mode === "machine"));
   $("editMode").setAttribute("aria-pressed", String(mode === "edit"));
   writer.style.paddingTop = "0px";
@@ -403,6 +412,7 @@ function setMode(next, focus = true) {
   if (locked()) writer.setSelectionRange(writer.value.length, writer.value.length);
   if (focus) writer.focus({ preventScroll: true });
   lastLine = undefined;
+  feedPending = false;
   updateSettings();
   scheduleLayout();
 }
@@ -413,7 +423,17 @@ function scheduleLayout() {
       layout();
     });
 }
-let strikeSound = "";
+let strikeSound = "", feedPending = false;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+function rollPaper(motion) {
+  if (mode !== "machine" || reducedMotion.matches) return;
+  if (surface.dataset.motion === motion) {
+    delete surface.dataset.motion;
+    // A second return can arrive before the previous feed has settled.
+    void surface.offsetWidth;
+  }
+  surface.dataset.motion = motion;
+}
 document.fonts?.load('18px "TT2020 Typewriter"', "Съешь ещё Ёж ABC").then(() => {
   layout.prefix = undefined;
   firstGeometry = true;
@@ -429,7 +449,8 @@ function layout() {
   if (sheet.clientHeight - bodyTop < 72) {
     bodyTop = isCompact ? 8 : Math.min(bodyTop, Math.max(18, sheet.clientHeight - 76));
   }
-  area.style.setProperty("--body-top", bodyTop + "px");
+  area.style.setProperty("--body-top", isCompact && mode === "machine"
+    ? "calc(var(--rim-inset) + 12px)" : bodyTop + "px");
   if (mode === "edit") return;
   const value = writer.value,
     caret = writer.selectionDirection === "backward" ? writer.selectionStart : writer.selectionEnd;
@@ -478,17 +499,20 @@ function layout() {
   const row = beforeRows + currentParagraphRows;
   stage.style.setProperty("--typed-height", (Math.min(row, 100) + 4) * lh + "px");
   const padding = Math.max(0, area.clientHeight - lh);
+  // One leading spacer puts the active row at the rail without enlarging the textarea.
   writer.style.paddingTop = padding + "px";
-  writer.style.paddingBottom = padding + "px";
   if (!writer.matches(":active") || writer.selectionStart === writer.selectionEnd) {
     writer.scrollTop = Math.round(row * lh);
   }
   if (!Number.isFinite(writer.scrollTop)) writer.scrollTop = oldScroll;
   const isReturn = lastLine !== undefined && row > lastLine;
+  if (isReturn && feedPending) rollPaper("feed");
+  feedPending = false;
   $("carriage").classList.toggle("return", isReturn);
   $("carriage").classList.toggle("jump", firstGeometry);
+  lightWindow.classList.toggle("jump", firstGeometry);
   stage.style.setProperty("--car-x", x - sr.left - stage.clientLeft + "px");
-  $("lamp").style.left = x - pr.left + "px";
+  lightWindow.style.setProperty("--lamp-x", x - pr.left + "px");
   if (strikeSound) clickSound(isReturn || strikeSound === "return" ? "return" : strikeSound);
   strikeSound = "";
   firstGeometry = false;
@@ -507,6 +531,7 @@ function focusMode(on) {
   if (on) {
     previousMode = mode;
     if (mode !== "machine") setMode("machine", false);
+    else rollPaper("load");
     const enter = stage.requestFullscreen || stage.webkitRequestFullscreen;
     if (enter && !fullscreenElement()) {
       try {
@@ -521,6 +546,7 @@ function focusMode(on) {
     if (mode !== previousMode) setMode(previousMode, false);
   }
   lastLine = undefined;
+  feedPending = false;
   firstGeometry = true;
   writer.focus({ preventScroll: true });
   viewport();
@@ -593,6 +619,7 @@ writer.addEventListener("input", (e) => {
     scheduleLayout();
     return;
   }
+  if (mode === "machine" && e.inputType?.startsWith("insert")) feedPending = true;
   if (e.isComposing) {
     scheduleLayout();
     return;
@@ -641,10 +668,11 @@ function viewport() {
   const vv = window.visualViewport;
   if (vv) {
     document.documentElement.style.setProperty("--view-height", Math.round(vv.height) + "px");
-    $("app").classList.toggle(
-      "keyboard",
-      innerHeight - vv.height > 125 && document.activeElement === writer
-    );
+    const app = $("app");
+    const keyboard = innerHeight - vv.height > 125 && document.activeElement === writer;
+    const opened = keyboard && !app.classList.contains("keyboard");
+    app.classList.toggle("keyboard", keyboard);
+    if (opened) rollPaper("load");
   }
   scheduleLayout();
 }
@@ -1038,7 +1066,9 @@ function settings() {
       ["white", "Белая", "#fff"],
       ["gray", "Шалфей", "#e1e5d9"]
     ]) +
-    '</div></div><div class="group"><label class="checkline">Подсветка у каретки<input type="checkbox" id="lampCheck" ' +
+    '</div><label class="checkline">Фактура бумаги<input type="checkbox" id="textureCheck" ' +
+    (prefs.texture ? "checked" : "") +
+    '></label></div><div class="group"><label class="checkline">Подсветка у каретки<input type="checkbox" id="lampCheck" ' +
     (prefs.lamp ? "checked" : "") +
     '></label><label class="checkline">Звук клавиш и звонок<input type="checkbox" id="soundCheck" ' +
     (prefs.sound ? "checked" : "") +
@@ -1071,6 +1101,10 @@ function settings() {
           settings();
         })
     );
+  $("textureCheck").onchange = (e) => {
+    prefs.texture = e.target.checked;
+    updateSettings();
+  };
   $("lampCheck").onchange = (e) => {
     prefs.lamp = e.target.checked;
     updateSettings();

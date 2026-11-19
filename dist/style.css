@@ -5,6 +5,11 @@
   font-weight: 400;
   font-display: swap;
 }
+@property --lamp-x {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
 :root {
   color-scheme: light;
   --ink: #292e28;
@@ -340,6 +345,14 @@ nav {
   opacity: 0.58;
 }
 .sheet {
+  --rim-inset: 2px;
+  --shoulder: clamp(17px, 3.8vw, 48px);
+  --bend: clamp(32px, 8vh, 80px);
+  --rounded-rim: var(--shoulder) var(--shoulder) 0 0 / var(--bend) var(--bend) 0 0;
+  --entry-travel: clamp(18px, 5vh, 54px);
+  --feed-travel: clamp(5px, 1.2vh, 12px);
+  --lamp-base: 12px;
+  color-scheme: light;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -347,38 +360,78 @@ nav {
   bottom: calc(var(--machine-deck) - 12px);
   width: var(--paper-size);
   max-width: calc(100% - 32px);
+}
+.paper-surface {
+  position: absolute;
+  inset: var(--rim-inset) 0 0;
+  overflow: hidden;
+  isolation: isolate;
+  pointer-events: none;
+  border-radius: var(--rounded-rim);
   background: linear-gradient(120deg, var(--paper) 30%, var(--paper-bottom) 130%);
   box-shadow:
     -2px 2px 6px #4b47332a,
     0 11px 30px #4b473325,
-    inset 0 0 2px #fffdf1;
-  border: 1px solid #fffcef90;
-  border-bottom: 0;
+    inset 0 1px 1px #fffdf1b3;
 }
-.sheet::before {
-  content: "";
+.paper-curl {
   position: absolute;
-  left: 2px;
-  right: -4px;
-  top: 3px;
-  bottom: 0;
-  background: linear-gradient(to right, transparent 98%, #ece8d5 98%);
-  border-right: 1px solid #a49b7f8c;
-  transform: rotate(0.09deg);
-  z-index: -1;
+  inset: 0 0 auto;
+  height: var(--bend);
+  transform-origin: center top;
+  background: linear-gradient(to bottom, #fffef5ad 0, #4d493d33 2px, #635c4a24 12%,
+    #a69c800d 38%, #fffcf52c 58%, transparent 100%);
 }
 .paper-grain {
-  opacity: 0.21;
+  background: url("paper-fibers.webp") repeat 0 0 / 256px 256px;
+  opacity: 0.7;
+}
+.smooth-paper .paper-grain { display: none; }
+.stage.editing .paper-surface {
+  inset: 0;
+  border-radius: 0;
+}
+.stage.editing .paper-curl { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .paper-surface[data-motion="load"] { animation: load-paper 650ms cubic-bezier(.22,.72,.25,1); }
+  .paper-surface[data-motion="feed"] { animation: feed-paper 350ms ease-in-out; }
+  .paper-surface[data-motion="load"] .paper-curl { animation: roll-in 650ms ease-out; }
+  .paper-surface[data-motion="feed"] .paper-curl { animation: roll-feed 350ms ease-in-out; }
+}
+@keyframes load-paper {
+  0% { top: calc(var(--rim-inset) - var(--entry-travel)); border-radius: 0; }
+  62% { top: calc(var(--rim-inset) + 4px); }
+  100% { top: var(--rim-inset); border-radius: var(--rounded-rim); }
+}
+@keyframes feed-paper {
+  0%, 100% { top: var(--rim-inset); border-radius: var(--rounded-rim); }
+  38% {
+    top: calc(var(--rim-inset) - var(--feed-travel));
+    border-radius: calc(var(--shoulder) * .72) calc(var(--shoulder) * .72) 0 0 /
+      calc(var(--bend) * .72) calc(var(--bend) * .72) 0 0;
+  }
+  76% { top: calc(var(--rim-inset) + 2px); }
+}
+@keyframes roll-in {
+  0% { transform: scaleY(.12); opacity: .18; }
+  65% { transform: scaleY(1.14); }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+@keyframes roll-feed {
+  0%, 100% { transform: scaleY(1); }
+  38% { transform: scaleY(.65); }
+  76% { transform: scaleY(1.08); }
 }
 .light-window {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  transition: --lamp-x 90ms ease-out;
 }
 .lamp {
   position: absolute;
-  left: 0;
+  left: var(--lamp-x, 50%);
   bottom: 0;
   width: 650px;
   height: 410px;
@@ -392,7 +445,6 @@ nav {
     transparent 71%
   );
   transform: translateX(-50%);
-  transition: left 90ms ease-out;
 }
 .paper-head {
   position: absolute;
@@ -447,6 +499,7 @@ h1 {
   top: var(--body-top, 170px);
   bottom: calc(12px + var(--type-gap));
   overflow: hidden;
+  overflow: clip;
 }
 .ink {
   font-family: var(--type);
@@ -592,7 +645,7 @@ h1 {
   transition-duration: 165ms;
 }
 .carriage.jump,
-.stage.jump .lamp {
+.light-window.jump {
   transition: none !important;
 }
 .slider {
@@ -1653,10 +1706,14 @@ body.no-lamp {
 .app.focus { min-height: 0; }
 .app.focus .stage {
   --machine-deck: max(env(safe-area-inset-bottom, 0px), clamp(38px, 10dvh, 100px));
-  background: var(--paper);
+  background: var(--desk);
   box-shadow: none;
 }
 .app.focus .sheet {
+  --rim-inset: clamp(20px, 7dvh, 80px);
+  --shoulder: clamp(22px, 5.8vw, 80px);
+  --bend: clamp(45px, 12vh, 120px);
+  --lamp-base: var(--machine-deck);
   inset: 0;
   transform: none;
   width: 100%;
@@ -1669,7 +1726,6 @@ body.no-lamp {
 .app.focus .desk-grain,
 .app.focus .machine-base,
 .app.focus .paper-head,
-.app.focus .sheet::before,
 .app.focus .ruler,
 .app.focus ~ #fileInput,
 .app.focus ~ .toast {
@@ -1695,34 +1751,21 @@ body[data-lighting="night"] {
   --green: #b7c6ae;
   --surface: #242322;
   --desk: #161719;
-  --paper: #302b2b;
-  --paper-bottom: #282426;
-  --lamp-strength: 1;
 }
-body[data-lighting="night"][data-paper="white"] { --paper: #353236; --paper-bottom: #2d292d; }
-body[data-lighting="night"][data-paper="gray"] { --paper: #2e3430; --paper-bottom: #252c29; }
-body[data-lighting="night"].no-lamp { --lamp-strength: 0; }
 body[data-lighting="night"] .stage { background: radial-gradient(ellipse at 50% 0%, #373430, #181719 80%); border-color: #4b4740; }
-body[data-lighting="night"] .sheet { border-color: #6a5f52; }
-body[data-lighting="night"] .app .lamp {
-  width: min(870px, 150vw);
-  height: min(460px, 95%);
-  opacity: var(--lamp-strength);
-  background: radial-gradient(ellipse 55% 100% at 50% 100%, #886454 0%, #806052 22%, #77574baa 49%, #84645336 72%, transparent 98%);
-  -webkit-mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
-  mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
-}
-body[data-lighting="night"] .lamp::after {
+body[data-lighting="night"] .lamp { display: none; }
+body[data-lighting="night"]:not(.no-lamp) .light-window::after {
+  /* The clear part of each mask lets the actual paper show through the beam. */
+  --tip: var(--lamp-x, 50%) calc(100% - var(--lamp-base) + 2px);
+  --shadow-mask: conic-gradient(at var(--tip), transparent 0deg 44deg, #000 62deg 298deg, transparent 316deg),
+    radial-gradient(ellipse min(73vw, 660px) min(83vh, 570px) at var(--tip), transparent 23%, #000 100%);
   content: "";
   position: absolute;
-  inset: auto 0 0;
-  height: var(--type-gap);
-  background: radial-gradient(ellipse 28px 100% at 50% 100%, #ffd5ad, transparent);
+  inset: 0;
+  background: rgb(20 20 26 / 45%);
+  -webkit-mask-image: var(--shadow-mask);
+  mask-image: var(--shadow-mask);
 }
-body[data-lighting="night"] #writer { color: #fff4df; caret-color: #ffe2ad; }
-body[data-lighting="night"] #writer::placeholder { color: #e4dfd6; }
-body[data-lighting="night"] #writer::selection { color: #fff; background: #685277; }
-body[data-lighting="night"] :is(.paper-head h1,.folio,.first-line) { color: #e7dcc7; }
 body[data-lighting="night"] .machine-base { background: linear-gradient(110deg, #302d2d, #47403d 50%, #302b2b); }
 body[data-lighting="night"] .ruler { filter: brightness(0.64); }
 body[data-lighting="night"] .track { filter: brightness(0.59); }
@@ -1743,8 +1786,7 @@ body[data-lighting="night"] .deck-key[aria-pressed="true"] { color: #f6ca92; bac
 @media (max-width: 675px) {
   .deck-actions { gap: 3px; }
   .deck-key { min-width: 32px; }
-  .app.keyboard:not(.focus) .stage:not(.editing) .sheet {
-    top: clamp(8px, calc(100% - var(--machine-deck) - var(--typed-height, 8rem) - 1.3rem), 40%);
-    border-radius: 16px 16px 0 0 / 38px 38px 0 0;
+  .app.keyboard .stage:not(.editing) .sheet {
+    --rim-inset: clamp(10px, calc(100% - var(--machine-deck) - var(--typed-height, 8rem) - 1.3rem), 34%);
   }
 }
