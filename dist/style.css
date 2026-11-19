@@ -1671,6 +1671,7 @@ body.no-lamp {
 .app.focus .paper-head,
 .app.focus .sheet::before,
 .app.focus .ruler,
+.app.focus ~ #fileInput,
 .app.focus ~ .toast {
   display: none;
 }
@@ -1694,12 +1695,12 @@ body[data-lighting="night"] {
   --green: #b7c6ae;
   --surface: #242322;
   --desk: #161719;
-  --paper: #403b37;
-  --paper-bottom: #352f2e;
+  --paper: #302b2b;
+  --paper-bottom: #282426;
   --lamp-strength: 1;
 }
-body[data-lighting="night"][data-paper="white"] { --paper: #444142; --paper-bottom: #363436; }
-body[data-lighting="night"][data-paper="gray"] { --paper: #3b4039; --paper-bottom: #2c322f; }
+body[data-lighting="night"][data-paper="white"] { --paper: #353236; --paper-bottom: #2d292d; }
+body[data-lighting="night"][data-paper="gray"] { --paper: #2e3430; --paper-bottom: #252c29; }
 body[data-lighting="night"].no-lamp { --lamp-strength: 0; }
 body[data-lighting="night"] .stage { background: radial-gradient(ellipse at 50% 0%, #373430, #181719 80%); border-color: #4b4740; }
 body[data-lighting="night"] .sheet { border-color: #6a5f52; }
@@ -1707,12 +1708,18 @@ body[data-lighting="night"] .app .lamp {
   width: min(870px, 150vw);
   height: min(460px, 95%);
   opacity: var(--lamp-strength);
-  background: radial-gradient(ellipse 55% 100% at 50% 100%, #f0c193 0%, #e9ba95 21%, #c89279aa 49%, #98736436 72%, transparent 98%);
+  background: radial-gradient(ellipse 55% 100% at 50% 100%, #886454 0%, #806052 22%, #77574baa 49%, #84645336 72%, transparent 98%);
   -webkit-mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
   mask-image: conic-gradient(from -62deg at 50% 100%, transparent, #000a 8deg, #000 18deg 106deg, #000a 116deg, transparent 124deg);
 }
-body[data-lighting="night"] .writing-area { mix-blend-mode: difference; }
-body[data-lighting="night"] #writer { color: #fff8ed; caret-color: #fff5db; }
+body[data-lighting="night"] .lamp::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: var(--type-gap);
+  background: radial-gradient(ellipse 28px 100% at 50% 100%, #ffd5ad, transparent);
+}
+body[data-lighting="night"] #writer { color: #fff4df; caret-color: #ffe2ad; }
 body[data-lighting="night"] #writer::placeholder { color: #e4dfd6; }
 body[data-lighting="night"] #writer::selection { color: #fff; background: #685277; }
 body[data-lighting="night"] :is(.paper-head h1,.folio,.first-line) { color: #e7dcc7; }

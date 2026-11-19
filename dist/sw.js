@@ -1,9 +1,9 @@
 "use strict";
-const CACHE = "karetka-shell-v1.2.0";
+const CACHE = "karetka-shell-v1.2.1";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.2",
+  "./style.css?v=1.2.1",
   "./fonts/tt2020-e.woff2",
   "./grain.png",
   "./mark.svg",
