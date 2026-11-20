@@ -104,9 +104,8 @@ body[data-lighting="night"]:not(.no-lamp) .stage:not(.editing) .light-window { d
 .paper-knob:focus-visible { outline-offset: -1px; }
 .stage.editing .paper-knob, .app.focus .paper-knob,
 .stage.editing #paperKnobHelp, .app.focus #paperKnobHelp { display: none; }
-.stage.paper-review #writer { caret-color: transparent; }
-.stage:not(.editing) #writer { touch-action: pinch-zoom; }
 .stage.paper-review .pin { opacity: .45; }
+.stage:not(.editing) #writer { touch-action: pinch-zoom; }
 @media (max-width: 520px) {
   .app.focus .sheet { --inset: max(6.2%, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)); }
 }

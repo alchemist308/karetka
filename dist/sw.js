@@ -1,9 +1,10 @@
 "use strict";
-const CACHE = "karetka-shell-v2.0.0-r1";
+const CACHE = "karetka-shell-v2.1.0-r1";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=2.0",
+  "./drafts.html",
+  "./style.css?v=2.1",
   "./fonts/tt2020-e.woff2",
   "./grain.png",
   "./paper-fibers.webp",
@@ -15,16 +16,17 @@ const SHELL = [
   "./storage.js?v=2.0",
   "./sync.js?v=2.0",
   "./sound.js?v=1.2",
-  "./app.js?v=2.0",
+  "./app.js?v=2.1",
   "./assistants.js",
   "./account.css?v=2.0",
+  "./stationery.css?v=2.1",
   "./typefaces.css?v=2.0",
-  "./paper-motion.css?v=2.0",
+  "./paper-motion.css?v=2.1",
   "./typewriter-input.js?v=2.0",
   "./paper-motion.js?v=2.0",
   "./account-keys.js?v=2.0",
-  "./private-files.js?v=2.0",
-  "./account-ui.js?v=2.0",
+  "./private-files.js?v=2.1",
+  "./account-ui.js?v=2.1",
   "./fonts/tt2020-base.woff2",
   "./fonts/pt-mono.woff2",
   "./fonts/old-standard.woff2"
@@ -36,7 +38,11 @@ self.addEventListener("install", (ev) => {
         const req = new Request(new URL(path, self.registration.scope), { cache: "reload" });
         const res = await fetch(req);
         if (!res.ok) throw new Error("Shell unavailable");
-        await cache.put(req, res);
+        // Navigation requests cannot replay a response that followed a hosting redirect.
+        const asset = res.redirected ? new Response(res.body, {
+          status: res.status, statusText: res.statusText, headers: res.headers
+        }) : res;
+        await cache.put(req, asset);
       }
       await self.skipWaiting();
     })
@@ -63,18 +69,22 @@ self.addEventListener("fetch", (ev) => {
   )
     return;
   const files = SHELL.map((p) => new URL(p, scope).href);
-  if (
-    req.mode === "navigate" &&
-    (url.pathname === new URL(scope).pathname ||
-      url.pathname === new URL("index.html", scope).pathname)
-  ) {
-    ev.respondWith(
-      caches
-        .open(CACHE)
-        .then((c) => c.match(new URL("index.html", scope).href))
-        .then((r) => r || fetch(req))
-    );
-    return;
+  if (req.mode === "navigate") {
+    const pages = new Map([
+      [new URL(scope).pathname, "index.html"],
+      [new URL("index.html", scope).pathname, "index.html"],
+      [new URL("drafts", scope).pathname, "drafts.html"],
+      [new URL("drafts.html", scope).pathname, "drafts.html"]
+    ]);
+    const page = pages.get(url.pathname);
+    if (page) {
+      ev.respondWith(
+        caches.open(CACHE)
+          .then((cache) => cache.match(new URL(page, scope).href))
+          .then((response) => response || fetch(req))
+      );
+      return;
+    }
   }
   if (files.includes(url.href))
     ev.respondWith(

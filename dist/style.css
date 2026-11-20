@@ -483,7 +483,7 @@ h1 {
   resize: none;
   outline: none;
   color: #322f28;
-  caret-color: #926344;
+  caret-color: transparent;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
@@ -841,7 +841,10 @@ h1 {
 .stage.editing .writing-area {
   bottom: 20px;
 }
+.stage:not(.editing) :is(.sheet, #writer) { cursor: none; }
 .stage.editing #writer {
+  cursor: text;
+  caret-color: #694532;
   scrollbar-width: thin;
   scrollbar-color: #b9b7a7 transparent;
   padding-right: 6px;

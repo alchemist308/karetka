@@ -382,7 +382,7 @@ function applyLighting() {
   const night = prefs.lighting === "night" || (prefs.lighting === "system" && systemNight.matches);
   document.body.dataset.lighting = night ? "night" : "day";
   $("nightButton").setAttribute("aria-pressed", String(night));
-  document.querySelector('meta[name="theme-color"]').content = night ? "#242322" : "#f8f7f2";
+  document.querySelector('meta[name="theme-color"]').content = night ? "#2e2021" : "#422729";
 }
 if (systemNight.addEventListener) systemNight.addEventListener("change", applyLighting);
 else systemNight.addListener(applyLighting);
@@ -653,6 +653,8 @@ window.addEventListener("pagehide", journal);
 function panel(view, title, sub = "", layout = "") {
   panelView = view;
   dialog.className = layout;
+  dialog.dataset.view = view;
+  dialog.scrollTop = 0;
   $("panelTitle").textContent = title;
   $("panelSub").textContent = sub;
   $("panelSub").hidden = !sub;
@@ -720,10 +722,12 @@ function viewLibrary() {
     '</div><hr><div class="group">' +
     btn(icon("upload") + "Открыть из файла", "import", "btn") +
     btn(icon("cloud") + "Синхронизация устройств", "sync", "btn") +
+    btn(icon("book") + "Как хранить черновики", "storageGuide", "btn") +
     "</div>" + (location.origin === "https://karetka-alchemist308.netlify.app"
-      ? '<p class="hint">Черновики с этого адреса доступны здесь. Для переноса включите синхронизацию и введите тот же код <a class="text-link" href="https://karetka.netlify.app/" target="_blank" rel="noopener">на новом адресе</a>.</p>'
+      ? '<p class="hint">Черновики с этого адреса доступны здесь. Для переноса сохраните файл рукописи и откройте его <a class="text-link" href="https://karetka.netlify.app/" target="_blank" rel="noopener">на новом адресе</a>.</p>'
       : "");
   action("new", () => bookForm());
+  action("storageGuide", () => draftGuide(viewLibrary, "К рукописям"));
   action("import", () => $("fileInput").click());
   action("sync", viewCloud);
   $("panelBody")
@@ -976,8 +980,34 @@ function unitForm(item, parent = null) {
   });
   $("unitTitle").focus();
 }
+async function draftGuide(back, backLabel) {
+  panel("draftGuide", "Хранение черновиков", "", "guide-dialog");
+  const body = $("panelBody");
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.className = "back-btn";
+  backButton.innerHTML = icon("back") + esc(backLabel);
+  backButton.onclick = back;
+  const content = document.createElement("div");
+  const direct = document.createElement("a");
+  direct.className = "text-link";
+  direct.href = "./drafts.html";
+  direct.textContent = "Открыть справочник отдельной страницей";
+  body.append(backButton, content, direct);
+  $("panelTitle").tabIndex = -1;
+  $("panelTitle").focus({ preventScroll: true });
+  try {
+    const response = await fetch("./drafts.html");
+    if (!response.ok) return;
+    const doc = new DOMParser().parseFromString(await response.text(), "text/html");
+    const article = doc.getElementById("draft-guide");
+    if (content.isConnected && article) content.replaceChildren(document.importNode(article, true));
+  } catch {
+    if (content.isConnected) content.textContent = "Справочник будет доступен офлайн после полной загрузки приложения.";
+  }
+}
 function settings() {
-  panel("settings", "Настройки");
+  panel("settings", "Настройки", "", "settings-dialog");
   const pills = (key, vals) =>
     vals
       .map(
@@ -996,37 +1026,55 @@ function settings() {
           "</button>"
       )
       .join("");
+  const choices = [["typing", "Набор"], ["paper", "Бумага и свет"], ["storage", "Хранение"]];
   $("panelBody").innerHTML =
-    '<div class="group"><h3>Набор на машинке</h3><label class="checkline">Стирать последний знак клавишей Backspace<input type="checkbox" id="eraseCheck" ' +
-    (prefs.backspace ? "checked" : "") +
-    '></label><p class="file-hint">Машинка дописывает текст в конец. Чтобы выделить фрагмент или передвинуть курсор, откройте «Правка».</p>' +
-    '</div><div class="group"><h3>Шрифт рукописи</h3><div class="opt-grid" role="group" aria-label="Гарнитура">' +
+    '<div class="setting-tabs" role="group" aria-label="Разделы настроек">' +
+    choices.map(([key, title]) => '<button type="button" aria-controls="settings-' + key +
+      '" aria-pressed="' + (key === "typing") + '" data-settings-tab="' + key + '">' + title + '</button>').join("") +
+    '</div><section id="settings-typing" class="setting-page">' +
+    '<div class="group"><h3>Шрифт рукописи</h3><div class="opt-grid type-choices" role="group" aria-label="Гарнитура">' +
     pills("typeface", [["ribbon", "Живая лента"], ["clean", "Чёткая лента"], ["mono", "Моно"], ["book", "Антиква"]]) +
-    '</div><div class="opt-grid type-sizes" role="group" aria-label="Размер шрифта">' +
-    pills("size", [
-      [16, "16 px"],
-      [18, "18 px"],
-      [21, "21 px"],
-      [24, "24 px"]
-    ]) +
-    '</div></div><div class="group"><h3>Освещение</h3><div class="opt-grid">' +
-    pills("lighting", [["day", "Дневное"], ["night", "Ночная лампа"], ["system", "Как на устройстве"]]) +
-    '</div></div><div class="group"><h3>Бумага</h3><div class="opt-grid">' +
-    pills("paper", [
-      ["cream", "Кремовая", "#f7efd9"],
-      ["white", "Белая", "#fff"],
-      ["gray", "Шалфей", "#e1e5d9"]
-    ]) +
+    '</div><div class="opt-grid" role="group" aria-label="Размер шрифта">' +
+    pills("size", [[16, "16 px"], [18, "18 px"], [21, "21 px"], [24, "24 px"]]) +
+    '</div><p class="type-sample" id="typeSample" aria-label="Образец шрифта">К вечеру море стихло.</p></div>' +
+    '<div class="group"><h3>Клавиши</h3><label class="checkline">Стирать последний знак клавишей Backspace<input type="checkbox" id="eraseCheck" ' +
+    (prefs.backspace ? "checked" : "") +
+    '></label><p class="file-hint">Машинка дописывает в конец текста. Для выделения и исправления текста включите «Правку».</p>' +
+    '<label class="checkline">Звук клавиш и звонок<input type="checkbox" id="soundCheck" ' +
+    (prefs.sound ? "checked" : "") +
+    '></label><label class="sound-level" for="volume">Громкость<output id="volumeValue" for="volume"></output><input id="volume" type="range" min="0" max="100" step="1"></label></div>' +
+    btn("Цель по числу знаков", "target") +
+    '</section><section id="settings-paper" class="setting-page" hidden><div class="group"><h3>Бумага</h3><div class="opt-grid">' +
+    pills("paper", [["cream", "Кремовая", "#f7efd9"], ["white", "Белая", "#fff"], ["gray", "Шалфей", "#e1e5d9"]]) +
     '</div><label class="checkline">Фактура бумаги<input type="checkbox" id="textureCheck" ' +
     (prefs.texture ? "checked" : "") +
-    '></label></div><div class="group"><label class="checkline">Подсветка у каретки<input type="checkbox" id="lampCheck" ' +
+    '></label></div><div class="group"><h3>Освещение</h3><div class="opt-grid">' +
+    pills("lighting", [["day", "Дневное"], ["night", "Ночная лампа"], ["system", "Как на устройстве"]]) +
+    '</div><label class="checkline">Подсветка у каретки ночью<input type="checkbox" id="lampCheck" ' +
     (prefs.lamp ? "checked" : "") +
-    '></label><label class="checkline">Звук клавиш и звонок<input type="checkbox" id="soundCheck" ' +
-    (prefs.sound ? "checked" : "") +
-    '></label><label class="sound-level" for="volume">Громкость<output id="volumeValue" for="volume"></output><input id="volume" type="range" min="0" max="100" step="1"></label></div><hr><div class="group">' +
-    btn("Цель по числу знаков", "target") +
-    btn(icon("cloud") + "Синхронизация устройств", "cloud", "btn") +
-    '<p class="file-hint" id="offlineInfo"></p></div>';
+    '></label></div></section><section id="settings-storage" class="setting-page" hidden><div class="group"><h3>Черновики</h3>' +
+    btn(icon("cloud") + "Синхронизация устройств", "cloud") +
+    btn(icon("book") + "Как хранить черновики", "storageGuide") +
+    '</div><div class="group"><h3>Работа без сети</h3><p class="notice" id="offlineInfo"></p></div></section>';
+  const tabButtons = $("panelBody").querySelectorAll("[data-settings-tab]");
+  for (const tab of tabButtons) {
+    tab.onclick = () => {
+      for (const item of tabButtons) {
+        const selected = item === tab;
+        item.setAttribute("aria-pressed", String(selected));
+        $(item.getAttribute("aria-controls")).hidden = !selected;
+      }
+    };
+  }
+  const specimen = () => {
+    $("typeSample").style.fontFamily = '"' + typefaces[prefs.typeface] + '", monospace';
+    $("typeSample").style.fontSize = prefs.size + "px";
+  };
+  specimen();
+  action("storageGuide", () => draftGuide(() => {
+    settings();
+    $("panelBody").querySelector('[data-settings-tab="storage"]').click();
+  }, "К настройкам"));
   $("offlineInfo").textContent = offlineReady
     ? "Офлайн-режим готов на этом устройстве."
     : "Офлайн-режим подготовится после загрузки приложения по HTTPS.";
@@ -1042,7 +1090,12 @@ function settings() {
           prefs[el.dataset.pref] =
             el.dataset.pref === "size" ? Number(el.dataset.val) : el.dataset.val;
           updateSettings();
-          settings();
+          for (const choice of $("panelBody").querySelectorAll("[data-pref]")) {
+            const on = String(prefs[choice.dataset.pref]) === choice.dataset.val;
+            choice.classList.toggle("selected", on);
+            choice.setAttribute("aria-pressed", String(on));
+          }
+          specimen();
         })
     );
   $("textureCheck").onchange = (e) => {
@@ -1150,7 +1203,11 @@ function viewExport() {
       .join("") +
     "</div>" +
     btn(icon("download") + "Скачать", "download", "btn main wide") +
-    (navigator.share ? btn("Поделиться текстом", "share", "btn wide share-text") : "");
+    (navigator.share ? btn("Поделиться текстом", "share", "btn wide share-text") : "") +
+    btn("Защищённая копия с паролем", "locked", "btn wide") +
+    btn("Как хранить черновики", "storageGuide", "subtle-btn");
+  action("locked", () => window.KaretkaFiles.open());
+  action("storageGuide", () => draftGuide(viewExport, "К экспорту"));
   $("panelBody")
     .querySelectorAll("[data-format]")
     .forEach(

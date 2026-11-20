@@ -233,7 +233,7 @@
     if (signing) tools.push(textButton("Забыли пароль?", () => authForm("recover", login.value.trim()), ""));
     if (kind === "login" || registering)
       tools.push(textButton("Посмотреть тарифы", () => showPlans(), ""),
-        textButton("Мой защищённый файл", () => window.KaretkaFiles.open(), ""));
+        textButton("Мой защищённый файл", () => window.KaretkaFiles.open(), ""), storageGuideLink());
     if (unlocking) {
       const exit = textButton("Выйти", () => void run(view, exit, () => space().leave()), "");
       tools.push(exit);
@@ -314,6 +314,9 @@
     box.append(element("p", "account-text", "Пробный период включает облачную библиотеку тарифа «Автор» и контрольные версии. Карта не требуется."), b);
     view.append(box);
   }
+  function storageGuideLink() {
+    return textButton("Как хранить черновики", () => draftGuide(openAccount, "В кабинет"), "");
+  }
   function storageOptions(view) {
     const ws = space();
     const box = element("section", "account-profile");
@@ -326,7 +329,7 @@
       await ws.setCloudEnabled(!cloudOn);
       if (active(view)) await openAccount();
     }));
-    box.append(toggle, links(textButton("Мой защищённый файл", () => window.KaretkaFiles.open(), "")));
+    box.append(toggle, links(textButton("Мой защищённый файл", () => window.KaretkaFiles.open(), ""), storageGuideLink()));
     view.append(box);
   }
   async function importBooks() {

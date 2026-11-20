@@ -61,7 +61,7 @@ async function adminAction({ store, body, url, op, now }, operator) {
 export async function route(request, { commerce: store, legacy, env = {}, ip = "local", clock = Date.now, fetcher = fetch }) {
   const url = new URL(request.url), path = url.pathname.replace(/^\/api\//, ""), now = clock();
   try {
-    if (path === "health" && request.method === "GET") return send(200, { ok: true, version: "2.0.0" });
+    if (path === "health" && request.method === "GET") return send(200, { ok: true, version: "2.1.0" });
     if (!url.pathname.startsWith("/api/")) fail(404, "Страница не найдена.");
     if (path === "vault") return vault(request, legacy, { allowCreate: false });
     if (path !== "pay/webhook" && !originAllowed(request, url)) fail(403, "Недопустимый источник запроса.");
