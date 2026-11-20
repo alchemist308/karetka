@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 
 const source = readFileSync(new URL("../dist/paper-motion.js", import.meta.url), "utf8");
-const { bendGeometry, phase, stripProjection } = createRequire(import.meta.url)("../dist/paper-motion.js");
+const { bendGeometry, phase, stripProjection, leadingEdge } = createRequire(import.meta.url)("../dist/paper-motion.js");
 
 test("the cylinder narrows only toward the back and meets the unscaled flat paper", () => {
   for (const width of [360, 820, 1280]) {
@@ -30,6 +30,19 @@ test("the cylinder narrows only toward the back and meets the unscaled flat pape
   }
 });
 
+test("the cut edge follows the same projection as the ink from the flat face through the bend", () => {
+  const points = bendGeometry(820, 72);
+  assert.deepEqual(leadingEdge(170, points), { x: 0, y: 170 });
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i - 1], q = points[i];
+    const end = leadingEdge(q.material, points);
+    assert.ok(Math.abs(end.x - q.x) < .001 && Math.abs(end.y - q.y) < .001);
+    const halfway = leadingEdge((p.material + q.material) / 2, points);
+    assert.ok(halfway.x < p.x && halfway.x > q.x && halfway.y > p.y && halfway.y < q.y);
+  }
+  assert.deepEqual(leadingEdge(points[0].material - 100, points), { x: points[0].x, y: 0 });
+});
+
 class Element {
   children = [];
   listeners = {};
@@ -49,11 +62,15 @@ class Element {
   setAttribute(k, v) { this.attributes[k] = v; }
   fire(event, extra = {}) { this.listeners[event]?.({ preventDefault() {}, ...extra }); }
   focus() {}
+  cloneNode() { return Object.assign(new Element(), { textContent: this.textContent }); }
+  querySelectorAll() { return []; }
 }
 function machine(reduced = false) {
   const dom = Object.fromEntries(["sheet", "paperSurface", "paperTurn", "stage", "writingArea", "writer", "paperKnob"].map((name) => [name, new Element()]));
   const { writer, writingArea: area, paperSurface: surface, paperKnob: knob, paperTurn: turn } = dom;
   const header = new Element(), curl = new Element(), frames = new Map();
+  header.offsetHeight = 62;
+  header.textContent = "Глава 01 Первое письмо";
   dom.sheet.querySelector = () => header;
   surface.querySelector = () => curl;
   surface.clientWidth = 820;
@@ -88,8 +105,34 @@ function machine(reduced = false) {
     const fiber = parseFloat(surface.style["--paper-phase"]);
     assert.equal(fiber, phase(ink - surface.offsetTop));
   }
-  return { writer, area, surface, knob, turn, motion, align, step, checkPhase };
+  return { writer, area, surface, sheet: dom.sheet, knob, turn, motion, align, step, checkPhase };
 }
+test("the first return lifts the edge and heading with the first line; rewinding restores the beginning", () => {
+  const m = machine();
+  const offset = (key) => parseFloat(m.sheet.style[key]);
+  m.align(0);
+  const edge = offset("--edge-y"), heading = offset("--heading-y");
+  assert.ok(edge > 60 && heading > edge);
+  m.writer.value = "Начало\n"; m.align(1, true);
+  for (const ms of [18, 32, 60, 100]) {
+    m.step(ms);
+    assert.equal(offset("--edge-y"), edge - m.writer.scrollTop);
+    assert.equal(offset("--heading-y"), heading - m.writer.scrollTop);
+    m.checkPhase();
+  }
+  m.align(9);
+  assert.ok(m.turn.classList.contains("has-heading"));
+  assert.equal(m.turn.children[0].children[0].children[2].textContent, "Глава 01 Первое письмо");
+  m.align(24);
+  assert.equal(m.sheet.style["--edge-visible"], "0");
+  assert.equal(m.turn.classList.contains("has-heading"), false);
+  m.knob.fire("keydown", {key: "Home"});
+  assert.equal(offset("--edge-y"), edge);
+  assert.equal(offset("--heading-y"), heading);
+  assert.equal(m.sheet.style["--edge-visible"], "1");
+  m.motion.reset();
+  assert.equal(m.sheet.style["--edge-y"], undefined);
+});
 test("manual and soft returns feed native ink and fibers by the same distance on every frame", () => {
   const m = machine();
   m.align(0); m.checkPhase();

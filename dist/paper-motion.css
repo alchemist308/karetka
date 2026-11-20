@@ -2,6 +2,27 @@
    same paper coordinates, compressed vertically and narrowed toward the back. */
 .stage:not(.editing) .paper-surface {
   border-radius: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent var(--edge-y, 0px), black var(--edge-y, 0px));
+  mask-image: linear-gradient(to bottom, transparent var(--edge-y, 0px), black var(--edge-y, 0px));
+}
+.stage:not(.editing) .sheet::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--rim-inset) + var(--edge-y, 0px));
+  inset-inline: var(--edge-inset, 0px);
+  height: 2px;
+  box-shadow: 0 -1px 3px #43362238, 0 -3px 12px #43362224;
+  opacity: var(--edge-visible, 0);
+  pointer-events: none;
+}
+.stage:not(.editing) .paper-surface::after {
+  content: "";
+  position: absolute;
+  inset: var(--edge-y, 0px) 0 auto;
+  height: 2px;
+  background: linear-gradient(to bottom, #ae9f827d, #fffdf1ab);
+  opacity: var(--edge-visible, 0);
+  pointer-events: none;
 }
 .stage:not(.editing) .paper-grain {
   background-position: 0 var(--paper-phase, 0px);
@@ -54,9 +75,16 @@
   contain: layout style;
 }
 .stage:not(.editing) .paper-head {
-  top: calc(var(--rim-inset) + var(--bend) + clamp(8px, 1.5vh, 16px));
-  transform: translateY(var(--heading-rise, 0px));
-  clip-path: inset(var(--heading-clip, 0px) 0 0);
+  display: block;
+  top: calc(var(--rim-inset) + var(--heading-y, var(--bend)));
+  clip-path: inset(max(0px, calc(var(--bend) - var(--heading-y, var(--bend)))) 0 0);
+  mask-image: none;
+}
+@media (max-height: 490px) {
+  .stage:not(.editing) :is(.paper-head, .bend-heading) h1 {
+    font-size: 1.35rem;
+    margin-top: 4px;
+  }
 }
 /* Desk lighting is uniform during the day. The night cone is anchored to the rail. */
 .light-window { display: none; }

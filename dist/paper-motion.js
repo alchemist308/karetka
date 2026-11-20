@@ -29,7 +29,16 @@ const KaretkaPaper = (() => {
     const length = q.material - p.material, w = p.scale / q.scale;
     return { xScale: p.scale, yScale: (q.y - p.y) * w / length, perspective: (w - 1) / length };
   }
-  if (typeof document === "undefined") return { bendGeometry, phase, paperOrigin, stripProjection };
+  function leadingEdge(material, points) {
+    if (material >= points.at(-1).material) return { x: 0, y: material };
+    if (material <= points[0].material) return { x: points[0].x, y: 0 };
+    const next = points.findIndex(p => p.material >= material);
+    const p = points[next - 1], q = points[next], delta = material - p.material;
+    const { yScale, perspective } = stripProjection(p, q);
+    const dy = delta * yScale / (1 + delta * perspective);
+    return { x: p.x + (q.x - p.x) * dy / (q.y - p.y), y: p.y + dy };
+  }
+  if (typeof document === "undefined") return { bendGeometry, phase, paperOrigin, stripProjection, leadingEdge };
 
   const id = (name) => document.getElementById(name);
   const sheet = id("sheet"), surface = id("paperSurface"), turn = id("paperTurn");
@@ -51,7 +60,7 @@ const KaretkaPaper = (() => {
   let animationFrame = 0, travel = null, latest = 0, position = 0, reviewing = false;
   let section, signature = "", lineHeight = 30, lastValue = "", ready = false;
   let flatTop = 0, leading = 0, rim = 0, visibleRows = 0, bounds = null, measureNode, measuredValue = null;
-  let headerFloor = 0, headerHeight = 0, headerVisible = false, headingText = "";
+  let headerHeight = 0, headingGap = 0, topMargin = 0, headingText = "";
   const px = (n) => n.toFixed(3) + "px";
 
   function shape(a) {
@@ -132,25 +141,26 @@ const KaretkaPaper = (() => {
     position = writer.scrollTop;
     const origin = paperOrigin(flatTop, leading, position, rim);
     surface.style.setProperty("--paper-phase", px(phase(origin)));
-    if (headerVisible) {
-      const rise = Math.min(0, rim + origin - headerFloor - headerHeight - lineHeight);
-      header.style.setProperty("--heading-rise", px(rise));
-      header.style.setProperty("--heading-clip", px(Math.max(0, rim + depth - headerFloor - rise)));
-      const y = headerFloor + rise - rim;
+    // The edge, folio and title have fixed offsets from the manuscript's first line.
+    const y = origin - headingGap - headerHeight;
+    const edge = y - topMargin;
+    const projected = leadingEdge(edge, points);
+    sheet.style.setProperty("--edge-y", px(projected.y));
+    sheet.style.setProperty("--edge-inset", px(projected.x));
+    sheet.style.setProperty("--edge-visible", edge >= points[0].material ? "1" : "0");
+    if (headerHeight) {
+      sheet.style.setProperty("--heading-y", px(y));
       const inBend = y < depth && y + headerHeight > points[0].material;
       turn.classList.toggle("has-heading", inBend);
-      if (inBend) {
-        turn.style.setProperty("--heading-y", px(y));
-        if (headingText !== header.textContent) {
-          headingText = header.textContent;
-          for (const band of strips) {
-            const copy = header.cloneNode(true);
-            copy.className = "bend-heading";
-            copy.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
-            band.heading?.remove();
-            band.plane.append(copy);
-            band.heading = copy;
-          }
+      if (inBend && headingText !== header.textContent) {
+        headingText = header.textContent;
+        for (const band of strips) {
+          const copy = header.cloneNode(true);
+          copy.className = "bend-heading";
+          copy.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+          band.heading?.remove();
+          band.plane.append(copy);
+          band.heading = copy;
         }
       }
     } else turn.classList.remove("has-heading");
@@ -193,8 +203,10 @@ const KaretkaPaper = (() => {
     animationFrame = 0; opening = null; travel = null; reviewing = false; ready = false; bounds = null;
     stage.classList.remove("paper-review");
     surface.style.removeProperty("clip-path");
-    header.style.removeProperty("--heading-rise");
-    header.style.removeProperty("--heading-clip");
+    sheet.style.removeProperty("--heading-y");
+    sheet.style.removeProperty("--edge-y");
+    sheet.style.removeProperty("--edge-inset");
+    sheet.style.removeProperty("--edge-visible");
     surface.style.removeProperty("--paper-phase");
     points = [];
   }
@@ -211,7 +223,10 @@ const KaretkaPaper = (() => {
     const previousTarget = latest, desired = Math.round(row * lh);
     latest = desired; section = partId; signature = nextSignature; lineHeight = lh;
     flatTop = area.offsetTop; leading = Math.max(0, area.clientHeight - lh); rim = surface.offsetTop;
-    headerVisible = header.offsetHeight > 0; headerHeight = header.offsetHeight; headerFloor = header.offsetTop;
+    headerHeight = header.offsetHeight;
+    const availableMargin = Math.max(0, flatTop + leading - rim - depth / 2 - headerHeight);
+    headingGap = Math.min(clamp(lineHeight * 1.75, 46, 66), availableMargin * .48);
+    topMargin = Math.min(clamp(lineHeight * 2, 36, 76), availableMargin - headingGap);
     visibleRows = Math.max(1, Math.floor(area.clientHeight / lh));
     sheet.style.setProperty("--ink-left", px(area.offsetLeft));
     sheet.style.setProperty("--ink-width", px(area.clientWidth));
