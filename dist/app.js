@@ -662,11 +662,16 @@ function panel(view, title, sub = "", layout = "") {
   if (!dialog.open) dialog.showModal();
 }
 function closePanel() {
-  if (dialog.open) dialog.close();
-}
-dialog.addEventListener("close", () => {
+  if (!dialog.open) return;
+  dialog.close();
   panelView = "";
+  // Focus within the dismissal gesture so touch keyboards can resume typing too.
+  if (ready && !writer.readOnly && !$("app").inert) writer.focus({ preventScroll: true });
   scheduleLayout();
+}
+dialog.addEventListener("cancel", (e) => {
+  e.preventDefault();
+  closePanel();
 });
 dialog.addEventListener("click", (e) => {
   if (e.target === dialog) {
@@ -1309,7 +1314,7 @@ function viewCloud() {
       body.querySelectorAll("button").forEach((b) => (b.disabled = false));
     }
   };
-  action("account", () => { closePanel(); window.KaretkaOpenAccount?.(); });
+  action("account", () => window.KaretkaOpenAccount?.());
   if (connected) {
     $("cloudInfo").textContent = cloud.info();
     action("sync", () => run(() => cloud.now(true)));
