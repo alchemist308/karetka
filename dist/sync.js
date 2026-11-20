@@ -9,11 +9,18 @@ function KaretkaSync({
   hasError,
   refresh,
   notify,
-  status
+  status,
+  account = false,
+  isActive = () => true,
+  enabled = () => true,
+  checkSession,
+  onAuthError
 }) {
-  const url = "./api/vault",
+  const url = account ? "./api/library" : "./api/vault",
     encoder = new TextEncoder(),
     decoder = new TextDecoder();
+  const requests = new Set(), limited = new Map();
+  const cooldown = 5 * 60 * 1000;
   let keys = null,
     secret = store.readPref("vaultKey", ""),
     running = null,
@@ -22,7 +29,12 @@ function KaretkaSync({
     retry = 5000,
     lastOK = 0,
     problem = "",
-    syncState = "idle";
+    syncState = "idle",
+    authRetryAt = 0,
+    stopped = false;
+  function checkActive() {
+    if (stopped || !isActive() || !enabled()) throw new Error("Рабочее пространство изменилось.");
+  }
   function b64(bytes) {
     let s = "";
     for (let i = 0; i < bytes.length; i += 16384)
@@ -71,8 +83,10 @@ function KaretkaSync({
     return { token, key };
   }
   async function call(k, method, query = "", payload) {
+    checkActive();
     const controller = new AbortController(),
       timeout = setTimeout(() => controller.abort(), 25000);
+    requests.add(controller);
     try {
       const r = await fetch(url + query, {
         method,
@@ -81,6 +95,7 @@ function KaretkaSync({
           ...(payload ? { "Content-Type": "application/json" } : {})
         },
         body: payload ? JSON.stringify(payload) : undefined,
+        credentials: "same-origin",
         cache: "no-store",
         signal: controller.signal
       });
@@ -89,6 +104,7 @@ function KaretkaSync({
           "Сервер синхронизации недоступен на этом адресе. Локальная копия сохранена."
         );
       const reply = await r.json();
+      checkActive();
       if (!r.ok) {
         const err = new Error(reply.error || "Сервер временно недоступен.");
         err.status = r.status;
@@ -101,6 +117,7 @@ function KaretkaSync({
       throw e;
     } finally {
       clearTimeout(timeout);
+      requests.delete(controller);
     }
   }
   const claim = (b, etag, version) => ({ space: keys.token, etag, version });
@@ -119,6 +136,7 @@ function KaretkaSync({
     };
   }
   async function send(b) {
+    if ((limited.get(b.id)?.retryAt || 0) > Date.now()) return;
     const snap = pack(b),
       baseETag = base(b)?.etag || null,
       iv = crypto.getRandomValues(new Uint8Array(12));
@@ -167,6 +185,7 @@ function KaretkaSync({
       envelope.parts = parts;
     }
     const remote = await call(keys, "PUT", "?id=" + id, { base: baseETag, head: envelope });
+    checkActive();
     b.cloud = claim(b, remote.etag, snap.version);
     touch(b, false);
   }
@@ -238,6 +257,7 @@ function KaretkaSync({
       return;
     }
     const incoming = await receive(id);
+    checkActive();
     local = books.get(id);
     if (local && local.version === incoming.book.version) {
       local.cloud = claim(local, incoming.etag, local.version);
@@ -258,7 +278,19 @@ function KaretkaSync({
     refresh(b, prev, copy);
   }
   function pendingBooks() {
-    return [...books.values()].some((b) => !b.demo && (!base(b) || base(b).version !== b.version));
+    return [...books.values()].some((b) =>
+      !b.demo && (limited.get(b.id)?.retryAt || 0) <= Date.now() &&
+      (!base(b) || base(b).version !== b.version)
+    );
+  }
+  async function reconcile(id, etag) {
+    try {
+      await syncBook(id, etag);
+    } catch (e) {
+      if (e.status !== 409) throw e;
+      const row = await call(keys, "GET", "?id=" + id);
+      await syncBook(id, row.etag);
+    }
   }
   async function pass() {
     if (!secret || !storageReady()) return;
@@ -272,6 +304,9 @@ function KaretkaSync({
     problem = "";
     status();
     try {
+      if (account && checkSession && !(await checkSession()))
+        throw new Error("Не удалось подтвердить сеанс. Рукопись сохранена на устройстве.");
+      checkActive();
       await flush();
       if ([...books.values()].some((b) => hasError(b.id)))
         throw new Error("Сначала требуется восстановить локальное сохранение.");
@@ -283,11 +318,12 @@ function KaretkaSync({
       ]);
       for (const id of ids) {
         try {
-          await syncBook(id, heads.get(id));
+          await reconcile(id, heads.get(id));
+          const b = books.get(id);
+          if (b && base(b)?.version === b.version) limited.delete(id);
         } catch (e) {
-          if (e.status !== 409) throw e;
-          const row = await call(keys, "GET", "?id=" + id);
-          await syncBook(id, row.etag);
+          if (e.status !== 402 || !account) throw e;
+          limited.set(id, { retryAt: Date.now() + cooldown, message: e.message });
         }
       }
       await flush();
@@ -295,6 +331,12 @@ function KaretkaSync({
       problem = "";
       retry = 5000;
     } catch (e) {
+      if (account && (e.status === 401 || e.status === 403)) {
+        authRetryAt = Date.now() + cooldown;
+        problem = "Синхронизация приостановлена. Проверьте вход в личном кабинете.";
+        void onAuthError?.();
+        throw e;
+      }
       problem = e.message || "Нет связи с хранилищем.";
       throw e;
     } finally {
@@ -303,7 +345,8 @@ function KaretkaSync({
     }
   }
   function schedule(delay = 1400) {
-    if (!secret || running || !navigator.onLine) return;
+    if (stopped || !isActive() || !enabled() || !secret || running || !navigator.onLine) return;
+    delay = Math.max(delay, authRetryAt - Date.now());
     // Do not postpone an already scheduled upload during continuous writing.
     const due = Date.now() + delay;
     if (timer && timerAt <= due) return;
@@ -314,9 +357,15 @@ function KaretkaSync({
       void now().catch(() => {});
     }, delay);
   }
-  function now() {
+  function now(force = false) {
+    if (stopped || !isActive() || !enabled()) return Promise.resolve();
+    if (force) { limited.clear(); authRetryAt = 0; }
     if (running) return running;
     if (!secret) return Promise.resolve();
+    if (authRetryAt > Date.now()) {
+      schedule(authRetryAt - Date.now());
+      return Promise.resolve();
+    }
     if (!navigator.onLine) {
       status();
       return Promise.reject(new Error("Устройство сейчас офлайн."));
@@ -327,7 +376,7 @@ function KaretkaSync({
     }
     running = pass().finally(() => {
       running = null;
-      if (!navigator.onLine) return;
+      if (stopped || !navigator.onLine) return;
       if (problem) {
         schedule(retry);
         retry = Math.min(120000, retry * 2);
@@ -336,6 +385,7 @@ function KaretkaSync({
     return running;
   }
   async function connect(value) {
+    if (account) throw new Error("Облако этого профиля подключается при входе в личный кабинет.");
     if (!storageReady())
       throw new Error("Хранилище браузера недоступно. Сначала сохраните рукопись в файл.");
     if (!window.isSecureContext || !crypto.subtle)
@@ -359,6 +409,8 @@ function KaretkaSync({
   }
   function badge(b) {
     if (!navigator.onLine) return "Офлайн · сохранено на устройстве";
+    if (limited.has(b.id)) return "Сохранено локально · лимит тарифа";
+    if (authRetryAt > Date.now()) return "Сохранено локально · нужен вход";
     if (problem) return "Сохранено локально · ожидает связи";
     if (!keys || !base(b) || base(b).version !== b.version)
       return syncState === "busy" ? "Синхронизация…" : "Сохранено локально · в очереди";
@@ -367,7 +419,8 @@ function KaretkaSync({
   function info() {
     return !navigator.onLine
       ? "Офлайн. Изменения отправятся, когда приложение откроется с интернетом."
-      : problem ||
+      : problem || (limited.size ? [...limited.values()][0].message +
+          " Остальные рукописи синхронизируются. Тариф можно изменить в кабинете." : "") ||
           (syncState === "busy"
             ? "Идёт синхронизация…"
             : lastOK
@@ -387,13 +440,20 @@ function KaretkaSync({
   window.addEventListener("focus", () => {
     if (secret && Date.now() - lastOK > 8000) void now().catch(() => {});
   });
+  function pause() {
+    clearTimeout(timer);
+    timer = null;
+    for (const controller of requests) controller.abort();
+  }
   return {
     get connected() {
-      return !!secret;
+      return !!secret && enabled();
     },
     connect,
     now,
     schedule,
+    pause,
+    stop() { stopped = true; pause(); },
     code: () => display(secret),
     badge,
     info

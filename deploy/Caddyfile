@@ -1,0 +1,10 @@
+{$PUBLIC_ORIGIN} {
+	encode zstd gzip
+	header {
+		-Server
+		Strict-Transport-Security "max-age=2592000"
+	}
+	reverse_proxy app:8080 {
+		header_up X-Karetka-Client-IP {http.request.remote.host}
+	}
+}

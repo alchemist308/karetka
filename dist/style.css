@@ -26,7 +26,6 @@
   --desk: #d8d9ce;
   --font-ink: 18px;
   --line-ink: 1.65;
-  --lamp-strength: 0.8;
   --car-x: 50%;
   --paper-size: min(78%, 850px);
   --inset: clamp(28px, 5.15vw, 78px);
@@ -349,8 +348,6 @@ nav {
   --shoulder: clamp(17px, 3.8vw, 48px);
   --bend: clamp(32px, 8vh, 80px);
   --rounded-rim: var(--shoulder) var(--shoulder) 0 0 / var(--bend) var(--bend) 0 0;
-  --entry-travel: clamp(18px, 5vh, 54px);
-  --feed-travel: clamp(5px, 1.2vh, 12px);
   --lamp-base: 12px;
   color-scheme: light;
   position: absolute;
@@ -392,59 +389,12 @@ nav {
   border-radius: 0;
 }
 .stage.editing .paper-curl { display: none; }
-@media (prefers-reduced-motion: no-preference) {
-  .paper-surface[data-motion="load"] { animation: load-paper 650ms cubic-bezier(.22,.72,.25,1); }
-  .paper-surface[data-motion="feed"] { animation: feed-paper 350ms ease-in-out; }
-  .paper-surface[data-motion="load"] .paper-curl { animation: roll-in 650ms ease-out; }
-  .paper-surface[data-motion="feed"] .paper-curl { animation: roll-feed 350ms ease-in-out; }
-}
-@keyframes load-paper {
-  0% { top: calc(var(--rim-inset) - var(--entry-travel)); border-radius: 0; }
-  62% { top: calc(var(--rim-inset) + 4px); }
-  100% { top: var(--rim-inset); border-radius: var(--rounded-rim); }
-}
-@keyframes feed-paper {
-  0%, 100% { top: var(--rim-inset); border-radius: var(--rounded-rim); }
-  38% {
-    top: calc(var(--rim-inset) - var(--feed-travel));
-    border-radius: calc(var(--shoulder) * .72) calc(var(--shoulder) * .72) 0 0 /
-      calc(var(--bend) * .72) calc(var(--bend) * .72) 0 0;
-  }
-  76% { top: calc(var(--rim-inset) + 2px); }
-}
-@keyframes roll-in {
-  0% { transform: scaleY(.12); opacity: .18; }
-  65% { transform: scaleY(1.14); }
-  100% { transform: scaleY(1); opacity: 1; }
-}
-@keyframes roll-feed {
-  0%, 100% { transform: scaleY(1); }
-  38% { transform: scaleY(.65); }
-  76% { transform: scaleY(1.08); }
-}
 .light-window {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
   transition: --lamp-x 90ms ease-out;
-}
-.lamp {
-  position: absolute;
-  left: var(--lamp-x, 50%);
-  bottom: 0;
-  width: 650px;
-  height: 410px;
-  max-width: none;
-  opacity: var(--lamp-strength);
-  background: radial-gradient(
-    ellipse at 50% 100%,
-    #ffe6a985 0%,
-    #ffeec85c 27%,
-    #fff2d52b 52%,
-    transparent 71%
-  );
-  transform: translateX(-50%);
 }
 .paper-head {
   position: absolute;
@@ -1236,16 +1186,11 @@ body[data-paper="white"] {
   --paper: #fcfcfa;
   --paper-bottom: #efefea;
   --desk: #d7dcd6;
-  --lamp-strength: 0.43;
 }
 body[data-paper="gray"] {
   --paper: #e8e9e0;
   --paper-bottom: #dce1d5;
   --desk: #c4ccc1;
-  --lamp-strength: 0.32;
-}
-body.no-lamp {
-  --lamp-strength: 0;
 }
 @media (min-height: 850px) {
   :root {
@@ -1714,13 +1659,13 @@ body.no-lamp {
   --shoulder: clamp(22px, 5.8vw, 80px);
   --bend: clamp(45px, 12vh, 120px);
   --lamp-base: var(--machine-deck);
-  inset: 0;
-  transform: none;
-  width: 100%;
-  max-width: none;
+  inset: 0 auto 0 50%;
+  transform: translateX(-50%);
+  width: min(100%, 1280px);
+  max-width: 100%;
   border: 0;
   box-shadow: none;
-  --inset: max(7%, calc((100% - 720px) / 2), env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+  --inset: max(8%, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
 }
 .app.focus .writing-area { bottom: calc(var(--machine-deck) + var(--type-gap)); }
 .app.focus .desk-grain,
@@ -1730,18 +1675,6 @@ body.no-lamp {
 .app.focus ~ #fileInput,
 .app.focus ~ .toast {
   display: none;
-}
-.app.focus .lamp {
-  bottom: var(--machine-deck);
-  width: min(920px, 120vw);
-  height: min(560px, 75vh);
-  background: radial-gradient(
-    ellipse at 50% 100%,
-    #ffdfa4bf,
-    #ffe8b963 33%,
-    #ffedc52b 55%,
-    transparent 75%
-  );
 }
 body[data-lighting="night"] {
   color-scheme: dark;
@@ -1753,7 +1686,6 @@ body[data-lighting="night"] {
   --desk: #161719;
 }
 body[data-lighting="night"] .stage { background: radial-gradient(ellipse at 50% 0%, #373430, #181719 80%); border-color: #4b4740; }
-body[data-lighting="night"] .lamp { display: none; }
 body[data-lighting="night"]:not(.no-lamp) .light-window::after {
   /* The clear part of each mask lets the actual paper show through the beam. */
   --tip: var(--lamp-x, 50%) calc(100% - var(--lamp-base) + 2px);
@@ -1787,6 +1719,6 @@ body[data-lighting="night"] .deck-key[aria-pressed="true"] { color: #f6ca92; bac
   .deck-actions { gap: 3px; }
   .deck-key { min-width: 32px; }
   .app.keyboard .stage:not(.editing) .sheet {
-    --rim-inset: clamp(10px, calc(100% - var(--machine-deck) - var(--typed-height, 8rem) - 1.3rem), 34%);
+    --rim-inset: clamp(10px, 8%, 46px);
   }
 }

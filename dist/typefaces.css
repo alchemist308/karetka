@@ -1,0 +1,35 @@
+@font-face {
+  font-family: "TT2020 Clean";
+  src: url("fonts/tt2020-base.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Karetka Ledger";
+  src: url("fonts/pt-mono.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Old Standard TT";
+  src: url("fonts/old-standard.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+body[data-typeface="clean"] .sheet,
+.pill[data-pref="typeface"][data-val="clean"] { --type: "TT2020 Clean", "Courier New", monospace; }
+body[data-typeface="mono"] .sheet,
+.pill[data-pref="typeface"][data-val="mono"] { --type: "Karetka Ledger", "Courier New", monospace; }
+body[data-typeface="book"] .sheet,
+.pill[data-pref="typeface"][data-val="book"] { --type: "Old Standard TT", Georgia, serif; }
+.pill[data-pref="typeface"] { font: 1.03rem/1.4 var(--type); }
+.type-sizes { margin-top: .55rem; }
+.stage:not(.editing) .sheet, .stage:not(.editing) #writer {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.stage:not(.editing) #writer::selection { background: transparent; color: #322f28; }

@@ -1,7 +1,8 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 const F = KaretkaFormats,
-  S = KaretkaStore;
+  workspaceProfile = KaretkaStore.currentProfile(),
+  S = KaretkaStore.forProfile(workspaceProfile);
 const iconPaths = {
   machine:
     '<path d="M7 10V3.5h10V10M9 6h6M4 10h16M5.5 11 3 18v2h18v-2l-2.5-7M6 16h12M9 18h6"/><path d="M8 13.2h.2m2.3 0h.2m2.3 0h.2m2.3 0h.2"/>',
@@ -108,14 +109,18 @@ const writer = $("writer"),
   stage = $("stage"),
   area = $("writingArea"),
   sheet = $("sheet"),
-  surface = $("paperSurface"),
   lightWindow = $("lightWindow"),
   mirror = $("mirror"),
   dialog = $("panel");
+const previousSettings = S.readPref("settings", {});
 const prefs = Object.assign(
-  { correction: "free", size: 18, paper: "cream", texture: true, lighting: "day", sound: false, volume: 35, lamp: true },
-  S.readPref("settings", {})
+  { typeface: "ribbon", size: 18, paper: "cream", texture: true, lighting: "day", sound: false, volume: 35, lamp: true },
+  previousSettings
 );
+const typefaces = { ribbon: "TT2020 Typewriter", clean: "TT2020 Clean", mono: "Karetka Ledger", book: "Old Standard TT" };
+if (!Object.hasOwn(typefaces, prefs.typeface)) prefs.typeface = "ribbon";
+if (typeof prefs.backspace !== "boolean") prefs.backspace = previousSettings?.correction === "free";
+delete prefs.correction;
 prefs.volume = Number.isFinite(prefs.volume) ? Math.min(100, Math.max(0, prefs.volume)) : 35;
 let cloud,
   offlineReady = false;
@@ -160,6 +165,8 @@ function touch(b = book, content = true) {
     b.updated = Date.now();
   }
   pending.add(b.id);
+  if (workspaceProfile && storageReady)
+    void S.writeJournal(b.id, { book: b, base: persisted.get(b.id) || 0 }).catch(() => {});
   badge();
   void persist(b.id);
 }
@@ -209,9 +216,7 @@ async function persist(id) {
       errors.delete(id);
       const journalKey = "journal." + id;
       try {
-        const saved = S.readPref(journalKey, null);
-        if (saved?.book?.version === snap.version)
-          localStorage.removeItem("karetka.v1." + journalKey);
+        S.clearJournal(journalKey, snap.version);
       } catch {}
     }
   })();
@@ -232,22 +237,25 @@ async function flush() {
   await Promise.allSettled([...saving.values()]);
 }
 function journal() {
+  const writes = [];
   for (const id of new Set([...pending, ...saving.keys()])) {
     const b = books.get(id);
-    if (b) S.writePref("journal." + id, { book: b, base: persisted.get(id) || 0 });
+    if (b) writes.push(S.writeJournal(id, { book: b, base: persisted.get(id) || 0 }));
   }
+  return Promise.allSettled(writes);
 }
-function repairJournal() {
+async function repairJournal() {
   let keys = [];
   try {
-    keys = Object.keys(localStorage).filter((k) => k.startsWith("karetka.v1.journal."));
+    keys = S.prefKeys("journal.");
   } catch {}
   for (const key of keys) {
     try {
-      const { book: b, base } = JSON.parse(localStorage.getItem(key));
+      const { book: b, base } = await S.readJournal(key);
+      const journalVersion = b.version;
       const live = books.get(b.id);
       if (live?.version === b.version) {
-        localStorage.removeItem(key);
+        S.clearJournal(key, journalVersion);
         continue;
       }
       if (live && live.rev !== base) {
@@ -260,7 +268,7 @@ function repairJournal() {
       books.set(b.id, b);
       pending.add(b.id);
       void persist(b.id).then(() => {
-        if (!errors.has(b.id)) localStorage.removeItem(key);
+        if (!errors.has(b.id)) S.clearJournal(key, journalVersion);
       });
     } catch {}
   }
@@ -387,6 +395,18 @@ function updateSettings() {
   applyLighting();
   document.body.classList.toggle("no-lamp", !prefs.lamp);
   document.documentElement.style.setProperty("--font-ink", prefs.size + "px");
+  if (document.body.dataset.typeface !== prefs.typeface) {
+    const face = prefs.typeface;
+    document.body.dataset.typeface = face;
+    layout.prefix = undefined;
+    firstGeometry = true;
+    document.fonts?.load(prefs.size + 'px "' + typefaces[face] + '"', "Съешь ещё Ёж ABC").then(() => {
+      if (prefs.typeface !== face) return;
+      layout.prefix = undefined;
+      firstGeometry = true;
+      scheduleLayout();
+    }).catch(() => {});
+  }
   $("soundButton").setAttribute("aria-pressed", String(prefs.sound));
   $("soundButton").querySelector(".sound-icon").innerHTML = icon(
     prefs.sound ? "speaker" : "speakerOff"
@@ -396,20 +416,20 @@ function updateSettings() {
   scheduleLayout();
 }
 function locked() {
-  return mode === "machine" && prefs.correction === "draft";
+  return mode === "machine";
 }
 function setMode(next, focus = true) {
   const changed = mode !== next;
   mode = next;
   stage.classList.toggle("editing", mode === "edit");
   if (changed && mode === "machine") rollPaper("load");
-  if (mode === "edit") delete surface.dataset.motion;
+  if (mode === "edit") paperRoll?.reset();
   $("machineMode").setAttribute("aria-pressed", String(mode === "machine"));
   $("editMode").setAttribute("aria-pressed", String(mode === "edit"));
   writer.style.paddingTop = "0px";
   writer.style.paddingBottom = "0px";
   writer.style.top = "0px";
-  if (locked()) writer.setSelectionRange(writer.value.length, writer.value.length);
+  machineInput.reset();
   if (focus) writer.focus({ preventScroll: true });
   lastLine = undefined;
   feedPending = false;
@@ -424,21 +444,10 @@ function scheduleLayout() {
     });
 }
 let strikeSound = "", feedPending = false;
-const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-function rollPaper(motion) {
-  if (mode !== "machine" || reducedMotion.matches) return;
-  if (surface.dataset.motion === motion) {
-    delete surface.dataset.motion;
-    // A second return can arrive before the previous feed has settled.
-    void surface.offsetWidth;
-  }
-  surface.dataset.motion = motion;
+const paperRoll = typeof KaretkaPaper === "undefined" ? null : KaretkaPaper;
+function rollPaper() {
+  if (mode === "machine") paperRoll?.open();
 }
-document.fonts?.load('18px "TT2020 Typewriter"', "Съешь ещё Ёж ABC").then(() => {
-  layout.prefix = undefined;
-  firstGeometry = true;
-  scheduleLayout();
-}).catch(() => {});
 function layout() {
   if (!part || !sheet.clientWidth) return;
   const head = sheet.querySelector(".paper-head"),
@@ -449,8 +458,8 @@ function layout() {
   if (sheet.clientHeight - bodyTop < 72) {
     bodyTop = isCompact ? 8 : Math.min(bodyTop, Math.max(18, sheet.clientHeight - 76));
   }
-  area.style.setProperty("--body-top", isCompact && mode === "machine"
-    ? "calc(var(--rim-inset) + 12px)" : bodyTop + "px");
+  area.style.setProperty("--body-top", mode === "machine" && paperRoll
+    ? "calc(var(--rim-inset) + var(--bend))" : bodyTop + "px");
   if (mode === "edit") return;
   const value = writer.value,
     caret = writer.selectionDirection === "backward" ? writer.selectionStart : writer.selectionEnd;
@@ -471,9 +480,8 @@ function layout() {
     mr = mirror.getBoundingClientRect(),
     pr = sheet.getBoundingClientRect();
   const x = Math.min(ar.right, Math.max(ar.left, ar.left + rc.left - mr.left));
-  const lh = parseFloat(getComputedStyle(writer).lineHeight);
-  const oldScroll = writer.scrollTop;
-  // Native scrolling preserves selection, IME, copy and ordinary keyboard shortcuts.
+  const type = getComputedStyle(writer), lh = parseFloat(type.lineHeight);
+  const font = [type.fontFamily, type.fontSize, type.lineHeight, type.fontWeight].join(" ");
   const currentParagraphRows = Math.floor((rc.top - mr.top) / lh + 0.25);
   let beforeRows = 0;
   if (start > 0) {
@@ -481,7 +489,7 @@ function layout() {
     if (
       layout.prefix !== prefix ||
       layout.width !== area.clientWidth ||
-      layout.size !== prefs.size
+      layout.font !== font
     ) {
       const probe = layout.probe || (layout.probe = document.createElement("div"));
       if (!probe.isConnected) {
@@ -491,22 +499,18 @@ function layout() {
       probe.textContent = prefix + "\u200b";
       layout.prefix = prefix;
       layout.width = area.clientWidth;
-      layout.size = prefs.size;
+      layout.font = font;
       layout.rows = Math.max(1, Math.round(probe.getBoundingClientRect().height / lh));
     }
     beforeRows = layout.rows;
   }
   const row = beforeRows + currentParagraphRows;
-  stage.style.setProperty("--typed-height", (Math.min(row, 100) + 4) * lh + "px");
   const padding = Math.max(0, area.clientHeight - lh);
   // One leading spacer puts the active row at the rail without enlarging the textarea.
   writer.style.paddingTop = padding + "px";
-  if (!writer.matches(":active") || writer.selectionStart === writer.selectionEnd) {
-    writer.scrollTop = Math.round(row * lh);
-  }
-  if (!Number.isFinite(writer.scrollTop)) writer.scrollTop = oldScroll;
   const isReturn = lastLine !== undefined && row > lastLine;
-  if (isReturn && feedPending) rollPaper("feed");
+  if (paperRoll) paperRoll.align({ row, lh, partId: part.id, feed: feedPending, resetView: firstGeometry, font });
+  else writer.scrollTop = Math.round(row * lh);
   feedPending = false;
   $("carriage").classList.toggle("return", isReturn);
   $("carriage").classList.toggle("jump", firstGeometry);
@@ -569,58 +573,22 @@ function blockEdit() {
     blockEdit.last = Date.now();
   }
 }
-writer.addEventListener("keydown", (e) => {
-  audioReady();
-  if (!locked() || e.isComposing) return;
-  const key = e.key.toLowerCase();
-  if (
-    ["backspace", "delete"].includes(key) ||
-    ((e.metaKey || e.ctrlKey) && ["z", "y", "x"].includes(key))
-  ) {
-    e.preventDefault();
-    blockEdit();
-  }
+const machineInput = KaretkaMachineInput(writer, {
+  enabled: locked,
+  backspace: () => prefs.backspace,
+  committed: () => part?.text || "",
+  blocked: blockEdit,
+  activity: audioReady
 });
-writer.addEventListener("beforeinput", (e) => {
-  audioReady();
-  if (!locked() || e.isComposing) return;
-  if (
-    /^(delete|history|format)/.test(e.inputType) ||
-    ["insertFromDrop", "insertReplacementText"].includes(e.inputType)
-  ) {
-    e.preventDefault();
-    blockEdit();
-    return;
-  }
-  if (writer.selectionStart !== writer.value.length || writer.selectionEnd !== writer.value.length)
-    writer.setSelectionRange(writer.value.length, writer.value.length);
-});
-writer.addEventListener("compositionstart", () => {
-  if (locked()) writer.setSelectionRange(writer.value.length, writer.value.length);
-});
-writer.addEventListener("cut", (e) => {
-  if (locked()) {
-    e.preventDefault();
-    blockEdit();
-  }
-});
-writer.addEventListener("drop", (e) => {
-  if (locked()) {
-    e.preventDefault();
-    blockEdit();
-  }
-});
+window.addEventListener("karetka-part", () => machineInput.reset());
 writer.addEventListener("input", (e) => {
   if (!part) return;
-  if (locked() && !e.isComposing && !writer.value.startsWith(part.text)) {
-    writer.value = part.text;
-    writer.setSelectionRange(writer.value.length, writer.value.length);
-    blockEdit();
+  if (!machineInput.accept(e)) {
     scheduleLayout();
     return;
   }
   if (mode === "machine" && e.inputType?.startsWith("insert")) feedPending = true;
-  if (e.isComposing) {
+  if (e.isComposing || machineInput.composing) {
     scheduleLayout();
     return;
   }
@@ -640,22 +608,19 @@ writer.addEventListener("input", (e) => {
   clearTimeout(countTimer);
   countTimer = setTimeout(updateCounts, 90);
 });
-writer.addEventListener("compositionend", () => {
-  if (part && part.text !== writer.value) {
-    if (locked() && !writer.value.startsWith(part.text)) writer.value = part.text;
-    else {
-      part.text = writer.value;
-      touch();
-    }
+writer.addEventListener("compositionend", (e) => {
+  if (part && machineInput.accept(e) && part.text !== writer.value) {
+    part.text = writer.value;
+    touch();
     updateCounts();
     scheduleLayout();
   }
 });
-["keyup", "click", "select", "focus"].forEach((name) =>
+["click", "focus"].forEach((name) =>
   writer.addEventListener(name, scheduleLayout)
 );
 document.addEventListener("selectionchange", () => {
-  if (document.activeElement === writer) scheduleLayout();
+  if (document.activeElement === writer && !locked()) scheduleLayout();
 });
 sheet.addEventListener("click", (e) => {
   if (e.target.closest("button")) return;
@@ -1013,18 +978,6 @@ function unitForm(item, parent = null) {
 }
 function settings() {
   panel("settings", "Настройки");
-  const opt = (val, title, sub) =>
-    '<button class="option ' +
-    (prefs.correction === val ? "selected" : "") +
-    '" data-correct="' +
-    val +
-    '" aria-pressed="' +
-    (prefs.correction === val) +
-    '"><span class="choice"></span><span class="row-text"><strong>' +
-    title +
-    "</strong><small>" +
-    sub +
-    "</small></span></button>";
   const pills = (key, vals) =>
     vals
       .map(
@@ -1044,14 +997,12 @@ function settings() {
       )
       .join("");
   $("panelBody").innerHTML =
-    '<div class="group"><h3>Исправления в машинке</h3>' +
-    opt("free", "Свободные правки", "Можно двигать курсор и исправлять написанное сразу.") +
-    opt(
-      "draft",
-      "Сначала черновик",
-      "Машинка дописывает в конец. Для изменений откройте «Правка»."
-    ) +
-    '</div><div class="group"><h3>Шрифт рукописи</h3><div class="opt-grid">' +
+    '<div class="group"><h3>Набор на машинке</h3><label class="checkline">Стирать последний знак клавишей Backspace<input type="checkbox" id="eraseCheck" ' +
+    (prefs.backspace ? "checked" : "") +
+    '></label><p class="file-hint">Машинка дописывает текст в конец. Чтобы выделить фрагмент или передвинуть курсор, откройте «Правка».</p>' +
+    '</div><div class="group"><h3>Шрифт рукописи</h3><div class="opt-grid" role="group" aria-label="Гарнитура">' +
+    pills("typeface", [["ribbon", "Живая лента"], ["clean", "Чёткая лента"], ["mono", "Моно"], ["book", "Антиква"]]) +
+    '</div><div class="opt-grid type-sizes" role="group" aria-label="Размер шрифта">' +
     pills("size", [
       [16, "16 px"],
       [18, "18 px"],
@@ -1079,17 +1030,10 @@ function settings() {
   $("offlineInfo").textContent = offlineReady
     ? "Офлайн-режим готов на этом устройстве."
     : "Офлайн-режим подготовится после загрузки приложения по HTTPS.";
-  $("panelBody")
-    .querySelectorAll("[data-correct]")
-    .forEach(
-      (el) =>
-        (el.onclick = () => {
-          prefs.correction = el.dataset.correct;
-          if (locked()) writer.setSelectionRange(writer.value.length, writer.value.length);
-          updateSettings();
-          settings();
-        })
-    );
+  $("eraseCheck").onchange = (e) => {
+    prefs.backspace = e.target.checked;
+    updateSettings();
+  };
   $("panelBody")
     .querySelectorAll("[data-pref]")
     .forEach(
@@ -1238,6 +1182,13 @@ function viewExport() {
     }
   });
 }
+function bookFromBackup(v) {
+  const b = newBook(v.title, v.kind);
+  b.cards = (v.cards || []).map((c) => ({ ...c, id: uid() }));
+  const unit = (s) => Object.assign(newUnit(s.title), { text: s.text, plan: s.plan || {} });
+  b.sections = v.sections.map((s) => ({ ...unit(s), scenes: s.scenes.map(unit) }));
+  return b;
+}
 $("fileInput").onchange = async (e) => {
   const file = e.target.files[0];
   e.target.value = "";
@@ -1246,11 +1197,7 @@ $("fileInput").onchange = async (e) => {
     const raw = await file.text();
     let b;
     if (/\.json$/i.test(file.name)) {
-      const v = F.parseBackup(raw);
-      b = newBook(v.title, v.kind);
-      b.cards = (v.cards || []).map((c) => ({ ...c, id: uid() }));
-      const unit = (s) => Object.assign(newUnit(s.title), { text: s.text, plan: s.plan || {} });
-      b.sections = v.sections.map((s) => ({ ...unit(s), scenes: s.scenes.map(unit) }));
+      b = bookFromBackup(F.parseBackup(raw));
     } else if (/\.txt$/i.test(file.name)) {
       b = newBook(file.name.replace(/\.txt$/i, "") || "Рукопись", "single");
       b.sections[0].text = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
@@ -1272,16 +1219,23 @@ $("fileInput").onchange = async (e) => {
 };
 function viewCloud() {
   panel("cloud", "Синхронизация", "Общие рукописи на компьютере, планшете и телефоне.");
-  const online = !!cloud?.connected;
-  $("panelBody").innerHTML = online
-    ? '<div class="group"><p class="notice" id="cloudInfo"></p>' +
-      btn("Синхронизировать сейчас", "sync", "btn main") +
-      btn("Код для другого устройства", "reveal") +
-      '</div><div id="revealArea"></div>'
-    : '<div class="group"><p class="hint">На первом устройстве создайте хранилище. На остальных введите тот же код. Код открывает ваши рукописи, поэтому храните его в надёжном месте.</p>' +
-      btn("Создать хранилище", "create", "btn main") +
-      '</div><hr><form id="joinForm"><div class="form-field"><label for="vaultKey">Код с другого устройства</label><input id="vaultKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></div><button type="submit" class="btn">Подключить устройство</button></form>';
+  const connected = !!cloud?.connected;
+  const accountButton = btn("Личный кабинет", "account", connected ? "btn" : "btn main");
+  const syncButton = btn("Синхронизировать сейчас", "sync", "btn main");
+  const info = '<p class="notice" id="cloudInfo"></p>';
+  let contents;
+  if (workspaceProfile) {
+    contents = connected ? info + syncButton + accountButton
+      : '<p class="hint">Рукописи сохраняются на устройстве. Зашифрованное облако можно включить в личном кабинете.</p>' + accountButton;
+  } else if (connected) {
+    contents = info + syncButton + btn("Код для другого устройства", "reveal") +
+      '<div id="revealArea"></div>' + accountButton;
+  } else {
+    contents = '<p class="hint">Войдите в кабинет, чтобы подключить личное облако. Здесь также можно открыть прежнее хранилище по коду.</p>' +
+      accountButton + '<form id="joinForm"><div class="form-field"><label for="vaultKey">Код прежнего хранилища</label><input id="vaultKey" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required></div><button type="submit" class="btn">Подключить по коду</button></form>';
+  }
   const body = $("panelBody");
+  body.innerHTML = '<div class="group">' + contents + '</div>';
   const error = document.createElement("p");
   error.className = "form-error";
   error.setAttribute("role", "status");
@@ -1298,22 +1252,12 @@ function viewCloud() {
       body.querySelectorAll("button").forEach((b) => (b.disabled = false));
     }
   };
-  if (online) {
+  action("account", () => { closePanel(); window.KaretkaOpenAccount?.(); });
+  if (connected) {
     $("cloudInfo").textContent = cloud.info();
-    action("sync", () => run(() => cloud.now()));
-    action("reveal", showCode);
-  } else {
-    action("create", () =>
-      run(async () => {
-        await cloud.connect(null);
-        if (panelView === "cloud") {
-          viewCloud();
-          showCode();
-        }
-      }).then(() => {
-        if (panelView === "cloud" && cloud.connected) showCode();
-      })
-    );
+    action("sync", () => run(() => cloud.now(true)));
+    if (!workspaceProfile) action("reveal", showCode);
+  } else if (!workspaceProfile) {
     $("joinForm").onsubmit = (e) => {
       e.preventDefault();
       const code = $("vaultKey").value;
@@ -1419,7 +1363,112 @@ function refreshSynced(b, previousVersion, copy) {
     selectBook(copy || b, old, pos);
   } else badge();
 }
+const workspace = KaretkaLocalWorkspace({
+  profile: workspaceProfile,
+  store: S,
+  async beforeChange() {
+    writer.readOnly = true;
+    $("app").inert = true;
+    await journal();
+    await flush();
+    // If the main store failed, require a durable journal before leaving this profile.
+    await journal();
+    for (const id of new Set([...pending, ...errors])) {
+      if ((await S.readJournal("journal." + id))?.book?.version !== books.get(id)?.version)
+        throw new Error("Не удалось сохранить черновик. Сохраните копию через «Экспорт» и повторите.");
+    }
+  },
+  cancelChange() {
+    $("app").inert = false;
+    writer.readOnly = !ready;
+    cloud?.schedule();
+  },
+  reload() {
+    cloud?.stop();
+    S.close();
+    location.reload();
+  },
+  async copyBook(copy) {
+    if (!ready || !storageReady) throw new Error("Локальное хранилище пока недоступно.");
+    if (!books.has(copy.id)) {
+      books.set(copy.id, copy);
+      touch(copy, false);
+    }
+    await flush();
+    if (errors.has(copy.id)) throw new Error("Не удалось сохранить копию на устройстве.");
+    return { id: copy.id, title: books.get(copy.id).title };
+  }
+});
+function currentWorkspaceBook() {
+  if (!workspace.active() || !ready || !book) throw new Error("Откройте рукопись в текущем профиле.");
+  return book;
+}
+window.KaretkaWorkspace = {
+  ...workspace,
+  currentBook: currentWorkspaceBook,
+  cloudEnabled: () => workspace.active() && !!cloud?.connected,
+  async setCloudEnabled(value) {
+    if (!workspaceProfile || !workspace.active()) throw new Error("Откройте свой профиль.");
+    if (value && !S.readPref("vaultKey", "")) throw new Error("Для подключения облака повторите вход.");
+    const enabled = value === true;
+    S.writePref("cloudEnabled", enabled);
+    if (S.readPref("cloudEnabled", false) !== enabled) throw new Error("Не удалось сохранить выбор устройства.");
+    if (enabled) cloud?.schedule(0);
+    else cloud?.pause();
+    badge();
+  },
+  vaultCode() {
+    if (!workspaceProfile || !workspace.active()) throw new Error("Чтобы открыть версию, войдите в её профиль.");
+    const code = S.readPref("vaultKey", "");
+    if (!/^[0-9a-f]{48}$/.test(code)) throw new Error("Чтобы открыть версию, повторите вход.");
+    return code;
+  },
+  async syncNow() {
+    const b = currentWorkspaceBook();
+    if (!cloud?.connected) throw new Error("Сначала подключите облако.");
+    await flush();
+    await cloud.now(true);
+    if (!b.demo && b.cloud?.version !== b.version) throw new Error(cloud.info());
+  },
+  async importCopy(v) {
+    currentWorkspaceBook();
+    if (!storageReady) throw new Error("Локальное хранилище недоступно.");
+    const b = bookFromBackup(v);
+    books.set(b.id, b);
+    selectBook(b);
+    touch(b);
+    await flush();
+    if (errors.has(b.id)) throw new Error("Не удалось сохранить копию на устройстве.");
+    return { id: b.id, title: b.title };
+  }
+};
+const checkWorkspace = () => {
+  void workspace.followProfile().catch(e => toast(e.message));
+  if (workspaceProfile) void workspace.verify().catch(e => toast(e.message));
+  else void workspace.finishLogout().catch(() => {});
+};
+window.addEventListener("storage", (e) => {
+  if (e.key === KaretkaStore.profileKey || e.key === null) checkWorkspace();
+  if (workspaceProfile && S.isCloudSetting(e.key)) {
+    if (S.readPref("cloudEnabled", false)) cloud?.schedule(0);
+    else cloud?.pause();
+    badge();
+  }
+});
+window.addEventListener("online", checkWorkspace);
+window.addEventListener("focus", checkWorkspace);
+
 (async () => {
+  if (workspaceProfile) {
+    if (navigator.onLine) await workspace.verify().catch(() => {});
+    if (!workspace.active()) return;
+    if (!(await S.restoreVaultKey().catch(() => ""))) {
+      await workspace.lock();
+      return;
+    }
+  } else {
+    void workspace.finishLogout().catch(() => {});
+  }
   try {
     const rows = await S.open();
     storageReady = true;
@@ -1428,20 +1477,26 @@ function refreshSynced(b, previousVersion, copy) {
       persisted.set(b.id, b.rev);
       diskVersions.set(b.id, b.version);
     });
-    repairJournal();
+    await repairJournal();
   } catch {
     storageReady = false;
+    if (workspaceProfile) toast("Не удалось открыть личное хранилище. Рукописи сохранены. Повторите вход в кабинет.");
   }
   if (!books.size) {
     const b = sampleBook();
     books.set(b.id, b);
-    touch(b, false);
+    if (storageReady) touch(b, false);
   }
   const selected = S.readPref("selected", {});
   selectBook(books.get(selected.book) || books.values().next().value, selected.part);
   cloud = KaretkaSync({
     books,
     store: S,
+    account: !!workspaceProfile,
+    isActive: workspace.active,
+    enabled: () => !workspaceProfile || S.readPref("cloudEnabled", false) === true,
+    checkSession: workspace.verify,
+    onAuthError: () => workspace.verify().catch(() => {}),
     uid,
     touch,
     flush,

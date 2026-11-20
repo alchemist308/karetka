@@ -32,7 +32,7 @@ async function readBody(req) {
   }
   return JSON.parse(Buffer.concat(pieces).toString("utf8"));
 }
-export async function vault(req, store) {
+export async function vault(req, store, access = {}) {
   const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.get("authorization") || "")?.[1];
   if (!token) return json(401, { error: "Требуется код подключения устройства." });
   const origin = req.headers.get("origin"),
@@ -43,7 +43,7 @@ export async function vault(req, store) {
   if (origin && origin !== url.origin && !previousAddress)
     return json(403, { error: "Недопустимый источник запроса." });
   const ns = createHash("sha256").update(token).digest("hex"),
-    root = "v1/" + ns + "/";
+    root = access.root || "v1/" + ns + "/";
   const id = url.searchParams.get("id"),
     upload = url.searchParams.get("upload"),
     part = url.searchParams.get("part"),
@@ -55,12 +55,15 @@ export async function vault(req, store) {
     return json(400, { error: "Некорректный адрес рукописи." });
   try {
     if (req.method === "POST" && !id) {
+      if (access.root) return json(200, { created: true });
+      if (access.allowCreate === false)
+        return json(403, { error: "Для нового облачного хранилища откройте «Кабинет». Прежние коды продолжают работать." });
       const created = await store.setJSON(root + "vault", { schema: 1 }, { onlyIfNew: true });
       return created.modified
         ? json(201, { created: true })
         : json(409, { error: "Это хранилище уже существует." });
     }
-    if (!(await store.getMetadata(root + "vault")))
+    if (!access.root && !(await store.getMetadata(root + "vault")))
       return json(404, { error: "Хранилище не найдено. Проверьте код с первого устройства." });
     if (req.method === "GET" && !id) {
       const prefix = root + "heads/";
@@ -79,6 +82,7 @@ export async function vault(req, store) {
     const data = await readBody(req);
     if (chunk) {
       if (!encoded(data?.data)) return json(400, { error: "Некорректная часть копии." });
+      await access.beforeWrite?.(id, { upload, part: +part });
       const result = await store.setJSON(path, { data: data.data }, { onlyIfNew: true });
       if (!result.modified) {
         const old = await store.get(path, { type: "json" });
@@ -111,6 +115,7 @@ export async function vault(req, store) {
         return json(422, { error: "Часть копии ещё не загружена." });
       head = { ...head, upload: h.upload, parts: h.parts };
     } else return json(400, { error: "Некорректные данные копии." });
+    await access.beforeWrite?.(id, { head });
     const previous = data.base === null ? null : await store.getMetadata(path);
     const currentGroup = head.upload ? { upload: head.upload, parts: head.parts } : null;
     const priorGroup = previous?.metadata?.active || null;
@@ -119,6 +124,7 @@ export async function vault(req, store) {
       metadata: { active: currentGroup, previous: priorGroup }
     });
     if (!changed.modified) return json(409, { error: "На другом устройстве есть новая редакция." });
+    await access.committed?.(id, head);
     // Keep the previous complete group available to readers already downloading it.
     const retired = previous?.metadata?.previous;
     if (
@@ -136,6 +142,7 @@ export async function vault(req, store) {
     }
     return json(200, { etag: changed.etag });
   } catch (e) {
+    if (e.status >= 400 && e.status < 600) return json(e.status, { error: e.message });
     if (e instanceof RangeError) return json(413, { error: "Часть копии слишком велика." });
     if (e instanceof SyntaxError) return json(400, { error: "Некорректный JSON." });
     return json(503, {

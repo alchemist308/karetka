@@ -1,9 +1,9 @@
 "use strict";
-const CACHE = "karetka-shell-v1.3.1";
+const CACHE = "karetka-shell-v2.0.0-r1";
 const SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=1.3.1",
+  "./style.css?v=2.0",
   "./fonts/tt2020-e.woff2",
   "./grain.png",
   "./paper-fibers.webp",
@@ -12,11 +12,22 @@ const SHELL = [
   "./icon-512.png",
   "./manifest.webmanifest",
   "./formats.js",
-  "./storage.js",
-  "./sync.js",
+  "./storage.js?v=2.0",
+  "./sync.js?v=2.0",
   "./sound.js?v=1.2",
-  "./app.js?v=1.3.1",
-  "./assistants.js"
+  "./app.js?v=2.0",
+  "./assistants.js",
+  "./account.css?v=2.0",
+  "./typefaces.css?v=2.0",
+  "./paper-motion.css?v=2.0",
+  "./typewriter-input.js?v=2.0",
+  "./paper-motion.js?v=2.0",
+  "./account-keys.js?v=2.0",
+  "./private-files.js?v=2.0",
+  "./account-ui.js?v=2.0",
+  "./fonts/tt2020-base.woff2",
+  "./fonts/pt-mono.woff2",
+  "./fonts/old-standard.woff2"
 ];
 self.addEventListener("install", (ev) => {
   ev.waitUntil(

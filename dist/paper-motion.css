@@ -1,0 +1,115 @@
+/* The front is flat up to the tangent line. The shallow arc above it uses the
+   same paper coordinates, compressed vertically and narrowed toward the back. */
+.stage:not(.editing) .paper-surface {
+  border-radius: 0;
+}
+.stage:not(.editing) .paper-grain {
+  background-position: 0 var(--paper-phase, 0px);
+  clip-path: inset(var(--bend) 0 0 0);
+}
+.stage:not(.editing) .paper-curl {
+  background: linear-gradient(to bottom, rgb(79 69 52 / 22%) 0%, rgb(108 95 74 / 11%) 17%,
+    rgb(135 121 94 / 3%) 40%, rgb(255 255 246 / 10%) 62%, transparent 100%);
+}
+.paper-turn {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--bend);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+.bend-strip, .bend-plane, .bend-fibers, .bend-ink {
+  position: absolute;
+  inset: 0 0 auto;
+}
+.bend-strip { overflow: hidden; pointer-events: none; }
+.bend-plane { transform-origin: center top; }
+.bend-fibers {
+  height: 100%;
+  background: url("paper-fibers.webp") repeat 0 calc(var(--paper-phase, 0px) - var(--strip-start, 0px)) / 256px 256px;
+  opacity: .7;
+}
+.smooth-paper .bend-fibers, .stage.editing .paper-turn { display: none; }
+.bend-ink, .bend-heading {
+  display: none;
+  width: var(--ink-width);
+  position: absolute;
+  left: var(--ink-left);
+  right: auto;
+}
+.bend-ink {
+  top: calc(var(--sample-y, 0px) - var(--strip-start, 0px));
+  color: #322f28;
+}
+.paper-turn.has-ink .bend-ink { display: block; }
+.bend-heading { top: calc(var(--heading-y, 0px) - var(--strip-start, 0px)); }
+.paper-turn.has-heading .bend-heading { display: block; }
+.bend-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+}
+.stage:not(.editing) .paper-head {
+  top: calc(var(--rim-inset) + var(--bend) + clamp(8px, 1.5vh, 16px));
+  transform: translateY(var(--heading-rise, 0px));
+  clip-path: inset(var(--heading-clip, 0px) 0 0);
+}
+/* Desk lighting is uniform during the day. The night cone is anchored to the rail. */
+.light-window { display: none; }
+body[data-lighting="night"]:not(.no-lamp) .stage:not(.editing) .light-window { display: block; }
+
+.paper-knob {
+  position: absolute;
+  right: max(2px, env(safe-area-inset-right, 0px));
+  top: var(--rail-bottom);
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  touch-action: none;
+  cursor: ns-resize;
+}
+.paper-knob::before {
+  content: "";
+  position: absolute;
+  width: 31px;
+  height: 10px;
+  left: 0;
+  background: linear-gradient(#383a38, #a0a097 42%, #676861 58%, #353532);
+}
+.paper-knob::after {
+  content: "";
+  position: relative;
+  width: 23px;
+  height: 30px;
+  border: 1px solid #44443e;
+  border-radius: 4px 6px 6px 4px;
+  background:
+    linear-gradient(90deg, #55534e 0%, transparent 14% 73%, #343430 94%),
+    linear-gradient(0deg, #302f2dc9 0%, transparent 30% 74%, #29292773 100%),
+    repeating-linear-gradient(to bottom, #62625b 0 1px, #99988b 1px 2px, #79786e 2px 3px, #494a44 3px 5px);
+  background-position: 0 0, 0 0, 0 var(--knurl, 0px);
+  box-shadow: .5px 2px 3px #24241f60;
+}
+.paper-knob:focus-visible { outline-offset: -1px; }
+.stage.editing .paper-knob, .app.focus .paper-knob,
+.stage.editing #paperKnobHelp, .app.focus #paperKnobHelp { display: none; }
+.stage.paper-review #writer { caret-color: transparent; }
+.stage:not(.editing) #writer { touch-action: pinch-zoom; }
+.stage.paper-review .pin { opacity: .45; }
+@media (max-width: 520px) {
+  .app.focus .sheet { --inset: max(6.2%, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px)); }
+}
+@media (max-height: 600px) {
+  .sheet, .app.focus .sheet { --bend: clamp(24px, 7dvh, 46px); }
+}
