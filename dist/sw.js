@@ -1,5 +1,5 @@
 "use strict";
-const CACHE = "karetka-shell-v2.2.0-r1";
+const CACHE = "karetka-shell-v2.2.1-r1";
 const SHELL = [
   "./",
   "./index.html",
@@ -16,14 +16,14 @@ const SHELL = [
   "./storage.js?v=2.0",
   "./sync.js?v=2.0",
   "./sound.js?v=1.2",
-  "./app.js?v=2.1.1",
+  "./app.js?v=2.2.1",
   "./assistants.js",
   "./account.css?v=2.0",
   "./stationery.css?v=2.1",
   "./typefaces.css?v=2.0",
-  "./paper-motion.css?v=2.2",
+  "./paper-motion.css?v=2.2.1",
   "./typewriter-input.js?v=2.0",
-  "./paper-motion.js?v=2.2",
+  "./paper-motion.js?v=2.2.1",
   "./account-keys.js?v=2.0",
   "./private-files.js?v=2.1",
   "./account-ui.js?v=2.1",

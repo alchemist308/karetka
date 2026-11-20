@@ -26,7 +26,6 @@
 }
 .stage:not(.editing) .paper-grain {
   background-position: 0 var(--paper-phase, 0px);
-  clip-path: inset(var(--bend) 0 0 0);
 }
 .stage:not(.editing) .paper-curl {
   background: linear-gradient(to bottom, rgb(79 69 52 / 22%) 0%, rgb(108 95 74 / 11%) 17%,
@@ -46,11 +45,9 @@
 .bend-strip { overflow: hidden; pointer-events: none; }
 .bend-plane { transform-origin: center top; }
 .bend-fibers {
-  height: 100%;
   background: url("paper-fibers.webp") repeat 0 calc(var(--paper-phase, 0px) - var(--strip-start, 0px)) / 256px 256px;
-  opacity: .7;
 }
-.smooth-paper .bend-fibers, .stage.editing .paper-turn { display: none; }
+.stage.editing .paper-grain .bend-strip, .stage.editing .paper-turn { display: none; }
 .bend-ink, .bend-heading {
   display: none;
   width: var(--ink-width);

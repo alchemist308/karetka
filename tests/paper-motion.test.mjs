@@ -62,17 +62,19 @@ class Element {
   setAttribute(k, v) { this.attributes[k] = v; }
   fire(event, extra = {}) { this.listeners[event]?.({ preventDefault() {}, ...extra }); }
   focus() {}
+  setPointerCapture() {}
+  getBoundingClientRect() { return { height: this.offsetHeight }; }
   cloneNode() { return Object.assign(new Element(), { textContent: this.textContent }); }
   querySelectorAll() { return []; }
 }
 function machine(reduced = false) {
   const dom = Object.fromEntries(["sheet", "paperSurface", "paperTurn", "stage", "writingArea", "writer", "paperKnob"].map((name) => [name, new Element()]));
   const { writer, writingArea: area, paperSurface: surface, paperKnob: knob, paperTurn: turn } = dom;
-  const header = new Element(), curl = new Element(), frames = new Map();
+  const header = new Element(), curl = new Element(), grain = new Element(), frames = new Map();
   header.offsetHeight = 62;
   header.textContent = "Глава 01 Первое письмо";
   dom.sheet.querySelector = () => header;
-  surface.querySelector = () => curl;
+  surface.querySelector = selector => selector === ".paper-grain" ? grain : curl;
   surface.clientWidth = 820;
   surface.offsetTop = 20;
   curl.offsetHeight = 60;
@@ -105,8 +107,23 @@ function machine(reduced = false) {
     const fiber = parseFloat(surface.style["--paper-phase"]);
     assert.equal(fiber, phase(ink - surface.offsetTop));
   }
-  return { writer, area, surface, sheet: dom.sheet, knob, turn, motion, align, step, checkPhase };
+  return { writer, area, surface, sheet: dom.sheet, knob, turn, grain, motion, align, step, checkPhase };
 }
+test("opaque fiber bands cover fractional seams and retain the projection of the printed ink", () => {
+  const m = machine();
+  m.align(0);
+  const bands = m.grain.children;
+  assert.equal(bands.length, m.turn.children.length);
+  assert.ok(bands.length > 1);
+  for (let i = 0; i < bands.length; i++) {
+    const band = bands[i], ink = m.turn.children[i];
+    assert.equal(band.children[0].style.transform, ink.children[0].style.transform);
+    assert.equal(band.children[0].style["--strip-start"], ink.children[0].style["--strip-start"]);
+    const end = parseFloat(band.style.top) + parseFloat(band.style.height);
+    const next = i + 1 < bands.length ? parseFloat(bands[i + 1].style.top) : 60;
+    assert.ok(end > next + 1);
+  }
+});
 test("the first return lifts the edge and heading with the first line; rewinding restores the beginning", () => {
   const m = machine();
   const offset = (key) => parseFloat(m.sheet.style[key]);
@@ -122,7 +139,7 @@ test("the first return lifts the edge and heading with the first line; rewinding
   }
   m.align(9);
   assert.ok(m.turn.classList.contains("has-heading"));
-  assert.equal(m.turn.children[0].children[0].children[2].textContent, "Глава 01 Первое письмо");
+  assert.equal(m.turn.children[0].children[0].children[1].textContent, "Глава 01 Первое письмо");
   m.align(24);
   assert.equal(m.sheet.style["--edge-visible"], "0");
   assert.equal(m.turn.classList.contains("has-heading"), false);
@@ -154,12 +171,46 @@ test("manual and soft returns feed native ink and fibers by the same distance on
   m.knob.fire("keydown", { key: "Enter" });
   assert.equal(m.writer.scrollTop, 60); m.checkPhase();
 });
+test("rolling toward the typist raises the page, including from the typing line; typing reseats the platen", () => {
+  const m = machine(true);
+  m.align(20);
+  const heading = () => parseFloat(m.sheet.style["--heading-y"]);
+  const resting = heading();
+  m.sheet.fire("wheel", { deltaMode: 0, deltaY: 45 });
+  assert.equal(heading(), resting - 45);
+  assert.equal(m.writer.style.transform, "translateY(-45.000px)");
+  m.sheet.fire("wheel", { deltaMode: 0, deltaY: -45 });
+  assert.equal(heading(), resting);
+  m.knob.fire("wheel", { deltaMode: 1, deltaY: 2 });
+  assert.equal(heading(), resting - 60);
+  m.writer.fire("beforeinput");
+  assert.equal(heading(), resting);
+  assert.equal(m.writer.style.transform, "");
+  m.sheet.fire("wheel", { deltaMode: 2, deltaY: -1 });
+  assert.equal(m.writer.scrollTop, 240);
+  m.sheet.fire("wheel", { deltaMode: 0, deltaY: 30, ctrlKey: true });
+  assert.equal(m.writer.scrollTop, 240);
+  m.knob.fire("pointerdown", { button: 0, clientY: 20, pointerId: 1 });
+  m.knob.fire("pointermove", { clientY: 30 });
+  m.knob.fire("lostpointercapture");
+  m.knob.fire("click");
+  assert.equal(m.writer.scrollTop, 260);
+  m.sheet.fire("touchstart", {touches: [{clientY: 20}]});
+  m.sheet.fire("touchmove", {touches: [{clientY: 30}]});
+  assert.equal(m.writer.scrollTop, 250);
+  const blank = machine(true);
+  blank.align(0);
+  blank.sheet.fire("wheel", { deltaMode: 1, deltaY: 1 });
+  assert.equal(blank.writer.style.transform, "translateY(-30.000px)");
+  blank.motion.reset();
+  assert.equal(blank.writer.style.transform, "");
+});
 test("ink reaching the bend is sampled from the manuscript; reduced motion keeps instant alignment", () => {
   const m = machine(true);
   m.align(0); m.writer.value = "а".repeat(210); m.align(20, true);
   assert.equal(m.writer.scrollTop, 600); m.checkPhase();
   assert.ok(m.turn.classList.contains("has-ink"));
-  const painted = m.turn.children[3].children[0].children[1].textContent;
+  const painted = m.turn.children[3].children[0].children[0].textContent;
   assert.ok(painted.length > 0 && painted.length < m.writer.value.length);
   assert.equal(m.knob.attributes["aria-valuenow"], "21");
   m.knob.fire("keydown", { key: "Home" });

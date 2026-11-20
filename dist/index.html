@@ -9,13 +9,25 @@
       content="Печатная машинка для ваших рукописей. Пишите рассказы и книги, собирайте главы и сцены."
     />
     <title>Каретка — письменный стол</title>
+    <style>
+      #startup {
+        position: fixed; inset: 0; z-index: 100; display: grid; place-content: center;
+        justify-items: center; gap: 12px; text-align: center; background: #422729; color: #f6e7ca;
+      }
+      #startup b { font: normal clamp(32px, 6vw, 46px)/1.1 Georgia, serif; }
+      #startup span { border-top: 1px solid #bba17d; padding: 12px 16px 0; font: 14px/1.5 system-ui, sans-serif; }
+      #startup a { color: inherit; font: 14px system-ui, sans-serif; visibility: hidden; animation: offer-retry 0s 10s forwards; }
+      @keyframes offer-retry { to { visibility: visible; } }
+      #startup.failed a { visibility: visible; animation: none; }
+      #startup ~ #app { visibility: hidden; }
+    </style>
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="icon" href="mark.svg" type="image/svg+xml" />
     <link rel="preload" href="fonts/tt2020-e.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="style.css?v=2.1" />
     <link rel="stylesheet" href="typefaces.css?v=2.0" />
-    <link rel="stylesheet" href="paper-motion.css?v=2.2" />
+    <link rel="stylesheet" href="paper-motion.css?v=2.2.1" />
     <link rel="stylesheet" href="account.css?v=2.0" />
     <link rel="stylesheet" href="stationery.css?v=2.1" />
     <script src="formats.js" defer></script>
@@ -23,14 +35,20 @@
     <script src="sync.js?v=2.0" defer></script>
     <script src="sound.js?v=1.2" defer></script>
     <script src="typewriter-input.js?v=2.0" defer></script>
-    <script src="paper-motion.js?v=2.2" defer></script>
-    <script src="app.js?v=2.1.1" defer></script>
+    <script src="paper-motion.js?v=2.2.1" defer></script>
+    <script src="app.js?v=2.2.1" defer></script>
     <script src="assistants.js" defer></script>
     <script src="account-keys.js?v=2.0" defer></script>
     <script src="private-files.js?v=2.1" defer></script>
     <script src="account-ui.js?v=2.1" defer></script>
   </head>
   <body>
+    <div id="startup">
+      <b>Каретка</b>
+      <span id="startupStatus" role="status">Готовим лист…</span>
+      <a href="">Повторить загрузку</a>
+      <noscript>Для работы письменного стола включите JavaScript.</noscript>
+    </div>
     <div class="app" id="app">
       <header class="topbar">
         <a class="brand" href="./" aria-label="Каретка, письменный стол" id="home"
@@ -140,7 +158,7 @@
               aria-valuemin="1" aria-valuemax="1" aria-valuenow="1"
               aria-describedby="paperKnobHelp"
               title="Прокрутка бумаги. Потяните ручку или вращайте колесо мыши."></button>
-            <span class="visually-hidden" id="paperKnobHelp">Вращайте ручку движением вверх или вниз. Стрелки прокручивают по строке, Page Up и Page Down — по экрану. Enter возвращает к набору.</span>
+            <span class="visually-hidden" id="paperKnobHelp">Колесо мыши к себе поднимает лист, от себя — опускает. Чтобы поднять бумагу боковой ручкой, потяните её вниз. Стрелки прокручивают по строке, Page Up и Page Down — по экрану. Enter возвращает к набору.</span>
             <div class="carriage" id="carriage">
               <div class="slider" aria-hidden="true">
                 <span class="pin"></span><span class="rivet l"></span><span class="rivet r"></span>

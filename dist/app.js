@@ -373,7 +373,7 @@ function selectBook(b, id, place) {
   firstGeometry = true;
   S.writePref("selected", { book: b.id, part: part.id });
   renderHeader();
-  if (oldPart !== part.id) rollPaper("load");
+  if (oldPart && oldPart !== part.id) rollPaper("load");
   scheduleLayout();
   window.dispatchEvent(new Event("karetka-part"));
 }
@@ -386,6 +386,7 @@ function applyLighting() {
 }
 if (systemNight.addEventListener) systemNight.addEventListener("change", applyLighting);
 else systemNight.addListener(applyLighting);
+let manuscriptFont;
 function updateSettings() {
   S.writePref("settings", prefs);
   if (volumeNode)
@@ -400,7 +401,7 @@ function updateSettings() {
     document.body.dataset.typeface = face;
     layout.prefix = undefined;
     firstGeometry = true;
-    document.fonts?.load(prefs.size + 'px "' + typefaces[face] + '"', "Съешь ещё Ёж ABC").then(() => {
+    manuscriptFont = document.fonts?.load(prefs.size + 'px "' + typefaces[face] + '"', "Съешь ещё Ёж ABC").then(() => {
       if (prefs.typeface !== face) return;
       layout.prefix = undefined;
       firstGeometry = true;
@@ -1520,6 +1521,26 @@ window.addEventListener("storage", (e) => {
 window.addEventListener("online", checkWorkspace);
 window.addEventListener("focus", checkWorkspace);
 
+async function revealDesk() {
+  const assets = [manuscriptFont, document.fonts?.ready];
+  if (prefs.texture) {
+    const fibers = new Image();
+    fibers.src = "./paper-fibers.webp";
+    assets.push(fibers.decode?.());
+  }
+  // A stalled decorative asset must not lock the local manuscript.
+  let timeout;
+  await Promise.race([
+    Promise.allSettled(assets),
+    new Promise(resolve => { timeout = setTimeout(resolve, 3500); })
+  ]);
+  clearTimeout(timeout);
+  await new Promise(requestAnimationFrame);
+  layout();
+  $("startup").remove();
+  if (!dialog.open && matchMedia("(pointer:fine)").matches) writer.focus({ preventScroll: true });
+}
+
 (async () => {
   if (workspaceProfile) {
     if (navigator.onLine) await workspace.verify().catch(() => {});
@@ -1576,7 +1597,6 @@ window.addEventListener("focus", checkWorkspace);
   viewport();
   badge();
   cloud.schedule(500);
-  if (matchMedia("(pointer:fine)").matches) writer.focus({ preventScroll: true });
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker
       .register("./sw.js")
@@ -1588,4 +1608,11 @@ window.addEventListener("focus", checkWorkspace);
       })
       .catch(() => {});
   }
-})();
+  await revealDesk();
+})().catch(() => {
+  const startup = $("startup");
+  if (startup) {
+    $("startupStatus").textContent = "Не удалось открыть письменный стол.";
+    startup.classList.add("failed");
+  }
+});
